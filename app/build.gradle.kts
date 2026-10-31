@@ -2,7 +2,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
 }
 
@@ -14,8 +13,8 @@ android {
         applicationId = "de.funkstrecke"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
 
     buildTypes {
@@ -60,6 +59,5 @@ dependencies {
     ksp("androidx.room:room-compiler:2.6.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("androidx.exifinterface:exifinterface:1.3.7")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
 }

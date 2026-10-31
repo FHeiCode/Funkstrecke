@@ -1,45 +1,60 @@
 # Funkstrecke
 
-Android-App (Kotlin, Jetpack Compose) zur Erfassung von Mobilfunk-Basisstationen. Alle Daten bleiben lokal auf dem Gerät.
+Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der Umgebung scannt, klassifiziert und ihren Standort aus deinen Messungen schätzt. Alle Daten bleiben auf dem Gerät.
 
 ## Funktionen
 
-- **Standortliste** mit Suche (Name, ID, Adresse, Cell-ID, eNB-ID, BNetzA-Nr.), Statusfilter und Hinweis auf fällige Wartungen
-- **Erfassung** pro Basisstation:
-  - Stammdaten: Name, Standort-ID, Betreiber, Status (Planung → Außer Betrieb)
-  - Standort: Adresse, Koordinaten per **GPS-Knopf** oder Einfügen von „49.4521, 11.0767“
-  - Funktechnik: 2G/4G/5G, Bänder (700–3600 MHz), MCC/MNC, TAC, eNB/gNB-ID, Cell-IDs, PCI, Sektoren, Azimute
-  - **Zell-Scan**: liest die vom Handy empfangenen Zellen (verbunden + Nachbarn) mit Band, Frequenz, Betreiber und Pegel aus; ein Tipp übernimmt die Werte
-  - Bauliches: Masttyp, Gesamt- und Antennenhöhe, Nummer der BNetzA-Standortbescheinigung
-  - Fotos aus Kamera oder Galerie
-  - Termine: Inbetriebnahme, letzte Begehung, nächste Wartung; Notizen
-- **Karte** (OpenStreetMap) mit allen Standorten; Tipp auf einen Marker öffnet ihn
-- **CSV-Export** (Semikolon, Dezimalkomma; öffnet sich direkt in Excel) über das Teilen-Menü
+**Live** – alle Zellen, die das Handy gerade hört, alle 3 Sekunden aktualisiert:
+- Technik (2G/3G/4G/5G), Betreiber, MCC, MNC, TAC/LAC
+- Cell-ID (ECI/NCI/CID), bei 4G zerlegt in eNodeB-ID und Sektor
+- PCI/PSC/BSIC, (E/NR-)ARFCN, Band und Downlink-Frequenz
+- Pegel (RSRP/SS-RSRP/RSCP/RSSI), Qualität (RSRQ/Ec/No), SINR
+- Timing Advance mit Entfernung (4G: 78 m pro Schritt, 2G: 554 m)
+- Dual-SIM: beide SIMs werden gescannt, wenn „Telefon“ erlaubt ist
+
+**Aufzeichnung** – Start im Live-Tab. Ein Hintergrunddienst nimmt bei jeder GPS-Position (höchstens alle 3 s) einen Scan auf, auch bei ausgeschaltetem Bildschirm. Eine Benachrichtigung zeigt den Fortschritt und hat einen Stopp-Knopf.
+
+**Stationen** – alle jemals gehörten Zellen, gruppiert nach Basisstation (4G: eNodeB mit seinen Sektoren), mit Filter nach Betreiber und Technik und Suche nach eNB, Cell-ID, PCI, TAC.
+
+**Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
+- Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt
+- Timing-Advance-Werte als zusätzliche Abstandsmessungen
+- Unsicherheitsradius (95 %) aus der Kovarianz; er schrumpft, je mehr Richtungen die Messungen abdecken
+- Liegen alle Messungen auf einer Linie (eine Straße), ist die Lage spiegelbildlich mehrdeutig. Die App sagt das und hält den Kreis groß, bis du aus einer anderen Richtung misst.
+- Detailansicht mit Karte: Messorte (grün = stark, rot = schwach), geschätzter Mast und Kreis
+
+In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Straßen bei etwa 20 m, mit Timing Advance bei etwa 5 m. In echter Umgebung verfälschen Gebäude und Antennendiagramme die Pegel, rechne eher mit 50–200 m. Die Schätzung ist ein Suchgebiet.
+
+**Karte** – alle verorteten Stationen in Betreiberfarbe mit Unsicherheitskreis (OpenStreetMap).
+
+**Export** – Zellen und vollständiges Messprotokoll als CSV (Semikolon, Dezimalkomma, öffnet direkt in Excel).
+
+## Grenzen von Android
+
+- Das Handy meldet nur Zellen des Netzes seiner SIM(s), andere Betreiber nur mit einer zweiten SIM.
+- Nachbarzellen melden oft nur PCI und ARFCN, keine Cell-ID. MCC/MNC übernimmt die App dann von der verbundenen Zelle (mit * markiert).
+- Timing Advance gibt es nur für die verbundene Zelle.
+- Bei 5G NSA melden viele Geräte keine NR-Zellidentität.
+- „Genauer Standort“ ist Pflicht, sonst liefert Android keine Zelldaten.
 
 ## Bauen auf GitHub
 
 1. Inhalt dieses Ordners in ein GitHub-Repository pushen.
-2. Der Workflow `.github/workflows/android.yml` startet bei jedem Push automatisch.
+2. Der Workflow `.github/workflows/android.yml` baut bei jedem Push automatisch.
 3. Unter **Actions → letzter Lauf → Artifacts** liegt `funkstrecke-apk` (ZIP mit `app-debug.apk`).
-4. APK aufs Handy kopieren und installieren („Installation aus unbekannten Quellen“ für den Dateimanager erlauben).
+4. APK aufs Handy kopieren und installieren. Play Protect warnt bei Apps außerhalb des Play Stores, besonders wenn sie Standort und Telefonstatus nutzen: „Weitere Details → Trotzdem installieren“.
 
-Lokal geht es genauso mit `./gradlew assembleDebug` oder in Android Studio.
-
-## Voraussetzungen und Hinweise
-
-- Android 8.0 (API 26) oder neuer
-- Der Zell-Scan braucht die Berechtigung **„Genauer Standort“** und eine aktive SIM.
-- Die eNodeB-ID wird bei 4G aus der ECI berechnet (ECI ÷ 256, Rest = Sektor).
-- Bei 5G NSA melden viele Geräte keine NR-Zellidentität; dann erscheinen nur Band und Pegel.
-- Die Karte lädt Kacheln von OpenStreetMap und braucht dafür Internet.
+Das Projekt enthält bewusst keine `gradlew`/`gradle-wrapper.jar` (ausführbare Dateien in ZIPs lösen manche Virenscanner aus). Für Android Studio einmal `gradle wrapper --gradle-version 8.11.1` im Projektordner ausführen oder das Projekt mit einer installierten Gradle-Version öffnen.
 
 ## Projektaufbau
 
 ```
 app/src/main/java/de/funkstrecke/
-├─ MainActivity.kt           Navigation
-├─ data/                     Room-Datenbank, Datenmodell, Auswahllisten
-├─ radio/                    Zell-Scanner, Band-/Frequenztabellen, Betreiber (MCC/MNC)
-├─ util/                     GPS, Fotos, CSV-Export
-└─ ui/                       Liste, Erfassungsformular, Karte, Theme
+├─ MainActivity.kt        Navigation (Live, Stationen, Karte, Detail)
+├─ radio/                 Zell-Scanner, Band-/Frequenztabellen, Betreiber (MCC/MNC)
+├─ data/                  Room-Datenbank (Zellen, Messungen, Schätzungen), Recorder, Gruppierung
+├─ locate/                Standortschätzung (Multilateration)
+├─ service/               Hintergrund-Aufzeichnung mit GPS
+├─ util/                  CSV-Export, Formatierung, Berechtigungen
+└─ ui/                    Oberfläche
 ```

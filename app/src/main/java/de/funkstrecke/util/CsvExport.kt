@@ -3,33 +3,15 @@ package de.funkstrecke.util
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
-import de.funkstrecke.data.Station
-import de.funkstrecke.data.splitList
+import de.funkstrecke.data.CellEntity
+import de.funkstrecke.data.EstimateEntity
+import de.funkstrecke.data.MeasurementEntity
+import de.funkstrecke.radio.Operators
 import java.io.File
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-
-private val GERMAN_DATE: DateTimeFormatter = DateTimeFormatter.ofPattern("dd.MM.yyyy")
-
-/** Datum aus UTC-Millisekunden (DatePicker-Format). */
-fun formatDate(millis: Long): String =
-    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate().format(GERMAN_DATE)
-
-fun localDate(millis: Long): LocalDate =
-    Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
 
 /** CSV mit Semikolon und Dezimalkomma, damit Excel in deutscher Einstellung es direkt öffnet. */
 object CsvExport {
-
-    private val header = listOf(
-        "ID", "Name", "Standort-ID", "Betreiber", "Status", "Adresse", "Breite", "Länge",
-        "Genauigkeit (m)", "Technologien", "Bänder (MHz)", "MCC", "MNC", "TAC/LAC", "eNB/gNB-ID",
-        "Cell-IDs", "PCI", "Sektoren", "Azimute", "Masttyp", "Gesamthöhe (m)", "Antennenhöhe (m)",
-        "BNetzA-Standortbescheinigung", "Inbetriebnahme", "Letzte Begehung", "Nächste Wartung",
-        "Fotos", "Notizen", "Zuletzt geändert",
-    )
 
     private fun escape(value: String): String =
         if (value.any { it == ';' || it == '"' || it == '\n' || it == '\r' }) {
@@ -38,38 +20,68 @@ object CsvExport {
             value
         }
 
-    private fun decimal(value: Number?): String = value?.toString()?.replace('.', ',') ?: ""
+    private fun num(value: Number?): String = value?.toString()?.replace('.', ',') ?: ""
+    private fun str(value: Any?): String = value?.toString() ?: ""
 
-    private fun row(s: Station): List<String> = listOf(
-        s.id.toString(), s.name, s.siteId, s.operator, s.status, s.address,
-        decimal(s.latitude), decimal(s.longitude), decimal(s.accuracyM),
-        s.technologies.replace(",", " / "), s.bands.replace(",", " / "),
-        s.mcc, s.mnc, s.tac, s.enbId, s.cellIds, s.pcis, s.sectors?.toString() ?: "", s.azimuths,
-        s.mastType, decimal(s.heightTotal), decimal(s.heightAntenna), s.bnetzaNr,
-        s.commissioning?.let(::formatDate) ?: "",
-        s.lastVisit?.let(::formatDate) ?: "",
-        s.nextMaintenance?.let(::formatDate) ?: "",
-        s.photos.splitList('|').size.toString(),
-        s.notes,
-        formatDate(s.updatedAt),
-    )
-
-    fun share(context: Context, stations: List<Station>) {
-        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-        val file = File(dir, "funkstrecke_${LocalDate.now()}.csv")
-        val text = buildString {
-            append('﻿')
-            append(header.joinToString(";") { escape(it) }).append("\r\n")
-            stations.forEach { append(row(it).joinToString(";") { v -> escape(v) }).append("\r\n") }
+    fun cellsCsv(cells: List<CellEntity>, estimates: List<EstimateEntity>): String {
+        val byGroup = estimates.associateBy { it.groupKey }
+        val header = listOf(
+            "Technik", "Betreiber", "MCC", "MNC", "MCC/MNC abgeleitet", "TAC/LAC", "Cell-ID", "eNB-ID", "Sektor",
+            "PCI/PSC/BSIC", "ARFCN", "Band", "Band (MHz)", "Downlink (MHz)", "Bester Pegel (dBm)",
+            "Letzter Pegel (dBm)", "Letzte Qualität (dB)", "Letztes SINR (dB)", "Min. Abstand TA (m)", "Scans",
+            "Davon verbunden", "Station", "Geschätzte Breite", "Geschätzte Länge", "Radius (m)", "Methode",
+            "Erstmals gesehen", "Zuletzt gesehen",
+        )
+        val rows = cells.sortedWith(compareBy({ it.groupKey }, { it.sector ?: 0 })).map { c ->
+            val e = byGroup[c.groupKey]
+            listOf(
+                c.rat, Operators.name(c.mcc, c.mnc) ?: "", str(c.mcc), str(c.mnc), if (c.plmnInferred) "ja" else "nein",
+                str(c.area), str(c.cellId), str(c.nodeId), str(c.sector), str(c.pci), str(c.arfcn), str(c.band),
+                str(c.bandMhz), num(c.freqMhz), str(c.bestDbm), str(c.lastDbm), str(c.lastQuality), str(c.lastSinr),
+                str(c.minDistanceM), str(c.samples), str(c.servingSamples), c.groupKey,
+                num(e?.latitude), num(e?.longitude), num(e?.radiusM?.toInt()), e?.method ?: "",
+                formatDateTimeSeconds(c.firstSeen), formatDateTimeSeconds(c.lastSeen),
+            )
         }
-        file.writeText(text)
+        return build(header, rows)
+    }
+
+    fun measurementsCsv(measurements: List<MeasurementEntity>, cells: List<CellEntity>): String {
+        val byKey = cells.associateBy { it.id }
+        val header = listOf(
+            "Zeit", "Technik", "Betreiber", "MCC", "MNC", "TAC/LAC", "Cell-ID", "eNB-ID", "Sektor", "PCI", "ARFCN",
+            "Breite", "Länge", "GPS-Genauigkeit (m)", "Pegel (dBm)", "Qualität (dB)", "SINR (dB)",
+            "Timing Advance", "Verbunden",
+        )
+        val rows = measurements.map { m ->
+            val c = byKey[m.cellKey]
+            listOf(
+                formatDateTimeSeconds(m.time), c?.rat ?: "", Operators.name(c?.mcc, c?.mnc) ?: "", str(c?.mcc),
+                str(c?.mnc), str(c?.area), str(c?.cellId), str(c?.nodeId), str(c?.sector), str(c?.pci),
+                str(c?.arfcn), num(m.latitude), num(m.longitude), num(m.accuracyM), str(m.dbm), str(m.quality),
+                str(m.sinr), str(m.timingAdvance), if (m.serving) "ja" else "nein",
+            )
+        }
+        return build(header, rows)
+    }
+
+    private fun build(header: List<String>, rows: List<List<String>>): String = buildString {
+        append('﻿')
+        append(header.joinToString(";") { escape(it) }).append("\r\n")
+        rows.forEach { append(it.joinToString(";") { v -> escape(v) }).append("\r\n") }
+    }
+
+    fun share(context: Context, baseName: String, content: String) {
+        val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+        val file = File(dir, "${baseName}_${LocalDate.now()}.csv")
+        file.writeText(content)
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Funkstrecke")
+            putExtra(Intent.EXTRA_SUBJECT, "Funkstrecke – $baseName")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, "Standorte exportieren"))
+        context.startActivity(Intent.createChooser(send, "Exportieren"))
     }
 }

@@ -8,7 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 
-// Signalblau als Hauptfarbe, Warnorange (wie Mast-Tagesmarkierung) als Akzent.
+// Signalblau als Hauptfarbe, Warnorange (wie die Tagesmarkierung eines Masts) als Akzent.
 private val LightColors = lightColorScheme(
     primary = Color(0xFF1D5C7E),
     onPrimary = Color.White,
@@ -55,17 +55,54 @@ fun FunkTheme(content: @Composable () -> Unit) {
     )
 }
 
-/** Feste Statusfarben, im Dunkelmodus aufgehellt. */
-@Composable
-fun statusColor(status: String): Color {
-    val base = when (status) {
-        "Planung" -> Color(0xFF5F7383)
-        "Genehmigung" -> Color(0xFF9C6B00)
-        "Im Bau" -> Color(0xFFB8541A)
-        "In Betrieb" -> Color(0xFF237A4B)
-        "Wartung" -> Color(0xFF6A4FB0)
-        "Außer Betrieb" -> Color(0xFFB3261E)
-        else -> Color(0xFF5F7383)
-    }
-    return if (isSystemInDarkTheme()) lerp(base, Color.White, 0.4f) else base
+/** Feste Farbe je Netzbetreiber (Karte, Chips). */
+fun operatorColorRaw(operator: String?): Color = when (operator) {
+    "Telekom" -> Color(0xFFD4006C)
+    "Vodafone" -> Color(0xFFD71A1A)
+    "Telefónica (O2)" -> Color(0xFF2A4BC9)
+    "1&1" -> Color(0xFF00897B)
+    else -> Color(0xFF6B7A85)
 }
+
+@Composable
+fun operatorColor(operator: String?): Color =
+    adaptive(operatorColorRaw(operator))
+
+/** Farbe je Funktechnik. */
+@Composable
+fun ratColor(rat: String): Color = adaptive(
+    when (rat) {
+        "5G" -> Color(0xFF00796B)
+        "4G" -> Color(0xFF1D5C7E)
+        "3G" -> Color(0xFF6A4FB0)
+        else -> Color(0xFF7A5C3E)
+    },
+)
+
+/** Signalstufe 0–4 aus dem Pegel; Schwellen für 4G/5G (RSRP) bzw. 2G/3G. */
+fun signalLevel(rat: String, dbm: Int?): Int {
+    if (dbm == null) return 0
+    val t = if (rat == "4G" || rat == "5G") intArrayOf(-80, -90, -100, -110) else intArrayOf(-70, -85, -95, -105)
+    return when {
+        dbm >= t[0] -> 4
+        dbm >= t[1] -> 3
+        dbm >= t[2] -> 2
+        dbm >= t[3] -> 1
+        else -> 0
+    }
+}
+
+fun signalColorRaw(level: Int): Color = when (level) {
+    4 -> Color(0xFF237A4B)
+    3 -> Color(0xFF6E8F1E)
+    2 -> Color(0xFFB07A00)
+    1 -> Color(0xFFC4561C)
+    else -> Color(0xFFB3261E)
+}
+
+@Composable
+fun signalColor(level: Int): Color = adaptive(signalColorRaw(level))
+
+@Composable
+private fun adaptive(base: Color): Color =
+    if (isSystemInDarkTheme()) lerp(base, Color.White, 0.38f) else base

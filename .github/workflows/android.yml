@@ -16,12 +16,13 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # Gradle wird hier geladen; das Projekt enthält absichtlich keine gradlew/gradle-wrapper.jar.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
 
       - name: APK bauen
-        run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --stacktrace
+        run: gradle assembleDebug --stacktrace
 
       - uses: actions/upload-artifact@v4
         with:
