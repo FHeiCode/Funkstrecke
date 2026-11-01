@@ -1,9 +1,16 @@
 package de.funkstrecke.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
+import android.location.Location
+import android.location.LocationManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -23,8 +30,12 @@ import org.osmdroid.views.overlay.CopyrightOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
+import de.funkstrecke.util.LocationHelper
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.cos
 
 /** Ein Punkt auf der Karte. */
 data class MapDot(
@@ -40,6 +51,24 @@ data class MapDot(
 /** Ein Unsicherheitskreis (Standortschätzung). */
 data class MapCircle(val latitude: Double, val longitude: Double, val radiusM: Double, val color: Color)
 
+/** Roter Punkt mit weißem Rand für die eigene Position. */
+private fun positionBitmap(context: Context): Bitmap {
+    val density = context.resources.displayMetrics.density
+    val size = (20 * density).toInt()
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = size / 2f
+    val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0x55000000 }
+    val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = OWN_POSITION_RED }
+    canvas.drawCircle(center, center + density * 0.8f, center - density * 0.5f, shadow)
+    canvas.drawCircle(center, center, center - density, ring)
+    canvas.drawCircle(center, center, center - density * 3.5f, fill)
+    return bitmap
+}
+
+private const val OWN_POSITION_RED = 0xFFE0201B.toInt()
+
 private fun dotDrawable(context: Context, color: Color, sizeDp: Int): GradientDrawable {
     val density = context.resources.displayMetrics.density
     val px = (sizeDp * density).toInt()
@@ -51,15 +80,49 @@ private fun dotDrawable(context: Context, color: Color, sizeDp: Int): GradientDr
     }
 }
 
+/** Worauf die Karte beim Öffnen zoomt. */
+sealed interface MapFocus {
+    /** Alle Punkte und Kreise einpassen */
+    data object FitAll : MapFocus
+
+    /** ±[radiusM] um die eigene Position (ohne Standortfreigabe: alle Punkte) */
+    data class OwnPosition(val radiusM: Double = 1_000.0) : MapFocus
+
+    /** ±[radiusM] um einen festen Punkt */
+    data class Around(val latitude: Double, val longitude: Double, val radiusM: Double = 1_000.0) : MapFocus
+}
+
+/** Rechteck ±[radiusM] in Nord-Süd- und Ost-West-Richtung um einen Punkt. */
+private fun boxAround(latitude: Double, longitude: Double, radiusM: Double): BoundingBox {
+    val dLat = radiusM / 110_540.0
+    val dLon = radiusM / (111_320.0 * cos(Math.toRadians(latitude)))
+    return BoundingBox(latitude + dLat, longitude + dLon, latitude - dLat, longitude - dLon)
+}
+
+/** Zoomt, sobald die Karte ihre Größe kennt. */
+private fun MapView.zoomWhenReady(box: BoundingBox) {
+    if (isLayoutOccurred) zoomToBoundingBox(box, false) else addOnFirstLayoutListener { _, _, _, _, _ -> zoomToBoundingBox(box, false) }
+}
+
+@SuppressLint("MissingPermission")
+private fun lastKnownPosition(context: Context): Location? {
+    val lm = context.getSystemService(LocationManager::class.java) ?: return null
+    return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+        .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+        .maxByOrNull { it.time }
+}
+
 /**
- * OpenStreetMap-Karte (osmdroid). Beim ersten Anzeigen wird auf alle Punkte gezoomt,
- * danach bleibt der Ausschnitt, wie ihn der Nutzer einstellt.
+ * OpenStreetMap-Karte (osmdroid). Beim ersten Anzeigen wird nach [focus] gezoomt, danach bleibt
+ * der Ausschnitt, wie ihn der Nutzer einstellt. Jede Änderung von [recenterKey] zoomt erneut.
  */
 @Composable
 fun OsmMap(
     dots: List<MapDot>,
     circles: List<MapCircle>,
     modifier: Modifier = Modifier,
+    focus: MapFocus = MapFocus.FitAll,
+    recenterKey: Int = 0,
     interactive: Boolean = true,
 ) {
     val context = LocalContext.current
@@ -80,19 +143,74 @@ fun OsmMap(
     }
     val fitted = remember { AtomicBoolean(false) }
 
+    // Eigene Position als roter Punkt (nur mit Standortfreigabe).
+    val positionOverlay = remember {
+        if (!LocationHelper.hasPermission(context)) {
+            null
+        } else {
+            val provider = GpsMyLocationProvider(context).apply {
+                // Sparsam: Position für den roten Punkt höchstens alle 3 s bzw. nach 5 m
+                locationUpdateMinTime = 3_000L
+                locationUpdateMinDistance = 5f
+            }
+            MyLocationNewOverlay(provider, mapView).apply {
+                val overlay = this
+                val dot = positionBitmap(context)
+                setPersonIcon(dot)
+                setPersonHotspot(dot.width / 2f, dot.height / 2f)
+                setDirectionArrow(dot, dot)
+                isDrawAccuracyEnabled = true
+                if (focus is MapFocus.OwnPosition) {
+                    // Sofort auf die letzte bekannte Position, beim ersten echten GPS-Fix nachjustieren.
+                    lastKnownPosition(context)?.let { mapView.zoomWhenReady(boxAround(it.latitude, it.longitude, focus.radiusM)) }
+                    runOnFirstFix {
+                        mapView.post {
+                            val here = overlay.myLocation
+                            if (here != null && fitted.compareAndSet(false, true)) {
+                                mapView.zoomWhenReady(boxAround(here.latitude, here.longitude, focus.radiusM))
+                            }
+                        }
+                    }
+                }
+                mapView.overlays.add(this)
+            }
+        }
+    }
+
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_RESUME -> mapView.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                Lifecycle.Event.ON_RESUME -> {
+                    mapView.onResume()
+                    positionOverlay?.enableMyLocation()
+                }
+                Lifecycle.Event.ON_PAUSE -> {
+                    positionOverlay?.disableMyLocation()
+                    mapView.onPause()
+                }
                 else -> Unit
             }
         }
         lifecycle.addObserver(observer)
+        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) positionOverlay?.enableMyLocation()
         onDispose {
             lifecycle.removeObserver(observer)
+            positionOverlay?.disableMyLocation()
             mapView.onDetach()
+        }
+    }
+
+    LaunchedEffect(recenterKey) {
+        if (recenterKey == 0) return@LaunchedEffect
+        when (focus) {
+            is MapFocus.OwnPosition -> {
+                val here = positionOverlay?.myLocation
+                    ?: lastKnownPosition(context)?.let { GeoPoint(it.latitude, it.longitude) }
+                if (here != null) mapView.zoomWhenReady(boxAround(here.latitude, here.longitude, focus.radiusM))
+            }
+            is MapFocus.Around -> mapView.zoomWhenReady(boxAround(focus.latitude, focus.longitude, focus.radiusM))
+            MapFocus.FitAll -> Unit
         }
     }
 
@@ -130,20 +248,33 @@ fun OsmMap(
                 }
             }
             map.overlays.addAll(added)
+            // Eigene Position immer obenauf zeichnen.
+            positionOverlay?.let {
+                map.overlays.remove(it)
+                map.overlays.add(it)
+            }
             map.invalidate()
 
-            val points = dots.map { GeoPoint(it.latitude, it.longitude) } +
-                circles.map { GeoPoint(it.latitude, it.longitude) }
-            if (points.isNotEmpty() && fitted.compareAndSet(false, true)) {
-                val fit = {
-                    if (points.size == 1) {
-                        map.controller.setZoom(16.0)
-                        map.controller.setCenter(points.first())
-                    } else {
-                        map.zoomToBoundingBox(BoundingBox.fromGeoPointsSafe(points).increaseByScale(1.4f), false)
+            when {
+                focus is MapFocus.Around -> {
+                    if (fitted.compareAndSet(false, true)) {
+                        map.zoomWhenReady(boxAround(focus.latitude, focus.longitude, focus.radiusM))
                     }
                 }
-                if (map.isLayoutOccurred) fit() else map.addOnFirstLayoutListener { _, _, _, _, _ -> fit() }
+                // Eigene Position wird über den GPS-Fix angesteuert; ohne Freigabe auf alle Punkte zoomen.
+                focus is MapFocus.OwnPosition && positionOverlay != null -> Unit
+                else -> {
+                    val points = dots.map { GeoPoint(it.latitude, it.longitude) } +
+                        circles.map { GeoPoint(it.latitude, it.longitude) }
+                    if (points.isNotEmpty() && fitted.compareAndSet(false, true)) {
+                        if (points.size == 1) {
+                            val p = points.first()
+                            map.zoomWhenReady(boxAround(p.latitude, p.longitude, 1_000.0))
+                        } else {
+                            map.zoomWhenReady(BoundingBox.fromGeoPointsSafe(points).increaseByScale(1.4f))
+                        }
+                    }
+                }
             }
         },
     )

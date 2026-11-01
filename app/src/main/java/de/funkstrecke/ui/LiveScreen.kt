@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -29,6 +30,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
@@ -57,23 +59,28 @@ import de.funkstrecke.radio.signalLabel
 import de.funkstrecke.service.LogState
 import de.funkstrecke.service.ScanService
 import de.funkstrecke.util.LocationHelper
+import de.funkstrecke.util.ScanPreset
+import de.funkstrecke.util.ScanSettings
+import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatAgo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private const val LIVE_INTERVAL_MS = 3_000L
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LiveScreen(vm: ScannerViewModel) {
+fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var hasPermission by remember { mutableStateOf(LocationHelper.hasPermission(context)) }
     var asked by remember { mutableStateOf(false) }
-    val live by vm.live.collectAsStateWithLifecycle()
+    val ownScan by vm.live.collectAsStateWithLifecycle()
+    val serviceScan by ScanService.lastScan.collectAsStateWithLifecycle()
     val log by ScanService.state.collectAsStateWithLifecycle()
+    val settings by SettingsStore.flow.collectAsStateWithLifecycle()
+    // Während der Aufzeichnung scannt nur der Dienst; die Live-Ansicht zeigt dessen Ergebnis.
+    val live = if (log.running && serviceScan.at != null) serviceScan else ownScan
     val totalCells by vm.cellCount.collectAsStateWithLifecycle()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
@@ -88,13 +95,22 @@ fun LiveScreen(vm: ScannerViewModel) {
     LaunchedEffect(Unit) {
         if (!hasPermission) permissionLauncher.launch(LocationHelper.permissions)
     }
-    LaunchedEffect(hasPermission) {
-        if (!hasPermission) return@LaunchedEffect
+    LaunchedEffect(hasPermission, log.running, settings.liveIntervalS, settings.forceRefresh) {
+        if (!hasPermission || log.running) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
-                vm.refreshLive()
+                vm.refreshLive(settings.forceRefresh)
                 now = System.currentTimeMillis()
-                delay(LIVE_INTERVAL_MS)
+                delay(settings.liveIntervalS * 1000L)
+            }
+        }
+    }
+    // Uhr für „vor x s“, unabhängig vom Scan-Takt
+    LaunchedEffect(Unit) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                now = System.currentTimeMillis()
+                delay(2_000)
             }
         }
     }
@@ -125,6 +141,11 @@ fun LiveScreen(vm: ScannerViewModel) {
                         )
                     }
                 },
+                actions = {
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Einstellungen")
+                    }
+                },
             )
         },
     ) { padding ->
@@ -144,6 +165,7 @@ fun LiveScreen(vm: ScannerViewModel) {
             item {
                 LoggingCard(
                     log = log,
+                    settings = settings,
                     totalCells = totalCells,
                     onStart = { startLogging() },
                     onStop = { ScanService.stop(context) },
@@ -211,7 +233,7 @@ private fun PermissionCard(asked: Boolean, onRequest: () -> Unit) {
 }
 
 @Composable
-private fun LoggingCard(log: LogState, totalCells: Int, onStart: () -> Unit, onStop: () -> Unit) {
+private fun LoggingCard(log: LogState, settings: ScanSettings, totalCells: Int, onStart: () -> Unit, onStop: () -> Unit) {
     val running = log.running
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -256,8 +278,13 @@ private fun LoggingCard(log: LogState, totalCells: Int, onStart: () -> Unit, onS
                     }
                 }
             }
+            val mode = ScanPreset.matching(settings)?.label ?: "Eigene Einstellung"
+            val rhythm = buildString {
+                append("alle ${settings.recordIntervalS} s")
+                if (settings.recordMinDistanceM > 0) append(", ab ${settings.recordMinDistanceM} m Bewegung")
+            }
             Text(
-                "$totalCells Zellen in der Datenbank",
+                "$mode: $rhythm · $totalCells Zellen in der Datenbank",
                 style = MaterialTheme.typography.labelMedium,
             )
         }

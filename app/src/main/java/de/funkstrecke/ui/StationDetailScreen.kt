@@ -214,6 +214,7 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
     OsmMap(
         dots = dots,
         circles = circles,
+        focus = MapFocus.Around(e.latitude, e.longitude, radiusM = 1_000.0),
         modifier = Modifier
             .fillMaxWidth()
             .height(280.dp)

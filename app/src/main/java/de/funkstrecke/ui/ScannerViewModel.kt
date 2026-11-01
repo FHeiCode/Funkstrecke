@@ -8,8 +8,8 @@ import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.MeasurementEntity
 import de.funkstrecke.data.Recorder
 import de.funkstrecke.data.buildStations
-import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.radio.CellScanner
+import de.funkstrecke.radio.LiveScan
 import de.funkstrecke.util.CsvExport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -23,8 +23,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-data class LiveScan(val cells: List<CellRecord> = emptyList(), val at: Long? = null)
 
 class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -47,9 +45,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val live: StateFlow<LiveScan> = _live.asStateFlow()
 
     /** Ein Live-Scan; die gehörten Zellen landen ohne Position in der Datenbank. */
-    suspend fun refreshLive() {
+    suspend fun refreshLive(forceRefresh: Boolean) {
         val app = getApplication<Application>()
-        val cells = CellScanner.scan(app)
+        val cells = CellScanner.scan(app, forceRefresh)
         val now = System.currentTimeMillis()
         _live.value = LiveScan(cells, now)
         Recorder.record(db, cells, null, now)

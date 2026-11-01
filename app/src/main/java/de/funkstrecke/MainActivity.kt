@@ -29,9 +29,11 @@ import androidx.navigation.navArgument
 import de.funkstrecke.ui.LiveScreen
 import de.funkstrecke.ui.MapScreen
 import de.funkstrecke.ui.ScannerViewModel
+import de.funkstrecke.ui.SettingsScreen
 import de.funkstrecke.ui.StationDetailScreen
 import de.funkstrecke.ui.StationsScreen
 import de.funkstrecke.ui.theme.FunkTheme
+import de.funkstrecke.util.SettingsStore
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
 
@@ -44,6 +46,7 @@ private val tabs = listOf(
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SettingsStore.init(this)
         enableEdgeToEdge()
         setContent {
             FunkTheme {
@@ -82,7 +85,8 @@ class MainActivity : ComponentActivity() {
                         startDestination = "live",
                         modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
                     ) {
-                        composable("live") { LiveScreen(vm) }
+                        composable("live") { LiveScreen(vm, onSettings = { nav.navigate("settings") }) }
+                        composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
                         composable("stations") { StationsScreen(vm, onOpen = ::openStation) }
                         composable("map") { MapScreen(vm, onOpen = ::openStation) }
                         composable(

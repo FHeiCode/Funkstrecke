@@ -21,6 +21,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
 import kotlin.math.roundToInt
 
+/** Ergebnis eines Scans für die Live-Ansicht. */
+data class LiveScan(val cells: List<CellRecord> = emptyList(), val at: Long? = null)
+
 /** Eine vom Handy gehörte Funkzelle mit allen Kennungen und Messwerten. */
 data class CellRecord(
     /** "2G", "3G", "4G" oder "5G" */
@@ -86,10 +89,14 @@ object CellScanner {
     private fun Int.orNull(): Int? = if (this == Int.MAX_VALUE || this == Int.MIN_VALUE) null else this
     private fun Long.orNull(): Long? = if (this == Long.MAX_VALUE) null else this
 
-    /** Scannt alle aktiven SIMs (Dual-SIM, falls "Telefonstatus" erlaubt ist). */
-    suspend fun scan(context: Context): List<CellRecord> {
+    /**
+     * Scannt alle aktiven SIMs (Dual-SIM, falls "Telefonstatus" erlaubt ist).
+     * Mit [forceRefresh] misst das Modem neu (genauer, braucht mehr Strom),
+     * sonst liefert Android den letzten bekannten Stand.
+     */
+    suspend fun scan(context: Context, forceRefresh: Boolean = true): List<CellRecord> {
         val base = context.getSystemService(TelephonyManager::class.java) ?: return emptyList()
-        val all = subscriptionManagers(context, base).flatMap { scanOne(context, it) }
+        val all = subscriptionManagers(context, base).flatMap { scanOne(context, it, forceRefresh) }
         return all
             .distinctBy { Triple(it.key, it.registered, it.arfcn) }
             .sortedWith(
@@ -109,9 +116,9 @@ object CellScanner {
     }
 
     @SuppressLint("MissingPermission")
-    private suspend fun scanOne(context: Context, tm: TelephonyManager): List<CellRecord> {
+    private suspend fun scanOne(context: Context, tm: TelephonyManager, forceRefresh: Boolean): List<CellRecord> {
         val infos: List<CellInfo> = try {
-            val fresh: List<CellInfo>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val fresh: List<CellInfo>? = if (forceRefresh && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 withTimeoutOrNull(6_000) { requestFresh(context, tm) }
             } else {
                 null

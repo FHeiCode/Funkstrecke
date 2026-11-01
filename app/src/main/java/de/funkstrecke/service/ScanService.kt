@@ -24,7 +24,9 @@ import de.funkstrecke.R
 import de.funkstrecke.data.AppDatabase
 import de.funkstrecke.data.Recorder
 import de.funkstrecke.radio.CellScanner
+import de.funkstrecke.radio.LiveScan
 import de.funkstrecke.util.LocationHelper
+import de.funkstrecke.util.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,6 +35,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -49,15 +52,18 @@ data class LogState(
 )
 
 /**
- * Vordergrunddienst: nimmt bei jeder GPS-Position (höchstens alle 3 s) einen Zell-Scan
- * auf und speichert ihn als Messpunkte. Läuft weiter, wenn der Bildschirm aus ist.
+ * Vordergrunddienst: nimmt bei GPS-Positionen einen Zell-Scan auf und speichert ihn als
+ * Messpunkte. Wie oft, legen die Einstellungen fest (Intervall und Mindestabstand).
+ * Läuft weiter, wenn der Bildschirm aus ist.
  */
 class ScanService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var listener: LocationListener? = null
     private var lastScanAt = 0L
+    private var lastScanLocation: Location? = null
     private var scanJob: Job? = null
+    private var settingsJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -67,6 +73,7 @@ class ScanService : Service() {
             return START_NOT_STICKY
         }
         if (listener != null) return START_NOT_STICKY
+        SettingsStore.init(this)
         if (!LocationHelper.hasPermission(this)) {
             stopSelf()
             return START_NOT_STICKY
@@ -83,6 +90,13 @@ class ScanService : Service() {
         if (!startLocationUpdates()) {
             _state.update { it.copy(waitingForGps = true) }
             updateNotification("Standort ist ausgeschaltet")
+        }
+        // Geänderte Einstellungen sofort übernehmen.
+        settingsJob = scope.launch {
+            SettingsStore.flow.drop(1).collect {
+                stopLocationUpdates()
+                startLocationUpdates()
+            }
         }
         return START_NOT_STICKY
     }
@@ -104,8 +118,12 @@ class ScanService : Service() {
             override fun onProviderEnabled(provider: String) {}
             override fun onProviderDisabled(provider: String) {}
         }
+        val settings = SettingsStore.current
+        // GPS nur so oft abfragen, wie gescannt wird; das ist der größte Hebel für den Akku.
+        val minTime = (settings.recordIntervalS * 1000L).coerceAtLeast(1_000L)
+        val minDistance = settings.recordMinDistanceM / 2f
         return try {
-            lm.requestLocationUpdates(provider, 2_000L, 0f, l, Looper.getMainLooper())
+            lm.requestLocationUpdates(provider, minTime, minDistance, l, Looper.getMainLooper())
             listener = l
             true
         } catch (e: SecurityException) {
@@ -113,12 +131,29 @@ class ScanService : Service() {
         }
     }
 
+    private fun stopLocationUpdates() {
+        listener?.let { l -> getSystemService(LocationManager::class.java)?.removeUpdates(l) }
+        listener = null
+    }
+
     private fun onFix(location: Location) {
         val now = System.currentTimeMillis()
-        if (now - lastScanAt < SCAN_INTERVAL_MS || scanJob?.isActive == true) return
+        val settings = SettingsStore.current
+        if (scanJob?.isActive == true) return
+        // Kleine Toleranz, weil GPS-Fixes nicht exakt im Takt kommen.
+        if (now - lastScanAt < settings.recordIntervalS * 1000L - 500) return
+        val previous = lastScanLocation
+        if (settings.recordMinDistanceM > 0 && previous != null &&
+            location.distanceTo(previous) < settings.recordMinDistanceM
+        ) {
+            _state.update { it.copy(waitingForGps = false, lastAccuracyM = if (location.hasAccuracy()) location.accuracy else null) }
+            return
+        }
         lastScanAt = now
+        lastScanLocation = location
         scanJob = scope.launch {
-            val cells = CellScanner.scan(this@ScanService)
+            val cells = CellScanner.scan(this@ScanService, settings.forceRefresh)
+            _lastScan.value = LiveScan(cells, now)
             Recorder.record(AppDatabase.get(this@ScanService), cells, location, now)
             val measured = cells.count { it.dbm != null }
             _state.update {
@@ -171,8 +206,8 @@ class ScanService : Service() {
     }
 
     override fun onDestroy() {
-        listener?.let { l -> getSystemService(LocationManager::class.java)?.removeUpdates(l) }
-        listener = null
+        stopLocationUpdates()
+        settingsJob?.cancel()
         scope.cancel()
         _state.update { it.copy(running = false, waitingForGps = false) }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -183,10 +218,12 @@ class ScanService : Service() {
         private const val CHANNEL_ID = "logging"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "de.funkstrecke.STOP"
-        private const val SCAN_INTERVAL_MS = 3_000L
-
         private val _state = MutableStateFlow(LogState())
         val state: StateFlow<LogState> = _state.asStateFlow()
+
+        /** Letzter Scan der Aufzeichnung; die Live-Ansicht zeigt ihn, statt selbst zu scannen. */
+        private val _lastScan = MutableStateFlow(LiveScan())
+        val lastScan: StateFlow<LiveScan> = _lastScan.asStateFlow()
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, ScanService::class.java))

@@ -12,7 +12,9 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 - Timing Advance mit Entfernung (4G: 78 m pro Schritt, 2G: 554 m)
 - Dual-SIM: beide SIMs werden gescannt, wenn „Telefon“ erlaubt ist
 
-**Aufzeichnung** – Start im Live-Tab. Ein Hintergrunddienst nimmt bei jeder GPS-Position (höchstens alle 3 s) einen Scan auf, auch bei ausgeschaltetem Bildschirm. Eine Benachrichtigung zeigt den Fortschritt und hat einen Stopp-Knopf.
+**Aufzeichnung** – Start im Live-Tab. Ein Hintergrunddienst nimmt bei GPS-Positionen einen Scan auf, auch bei ausgeschaltetem Bildschirm. Eine Benachrichtigung zeigt den Fortschritt und hat einen Stopp-Knopf.
+
+**Einstellungen** (Zahnrad im Live-Tab) – Energiemodus *Genau* (alle 3 s), *Ausgewogen* (alle 10 s ab 15 m Bewegung, Standard) oder *Sparsam* (alle 30 s ab 50 m, Modem-Zwischenspeicher), oder einzeln: Scan-Intervall, Mindestabstand, Live-Takt, frische Messung an/aus. GPS wird nur so oft abgefragt, wie gescannt wird.
 
 **Stationen** – alle jemals gehörten Zellen, gruppiert nach Basisstation (4G: eNodeB mit seinen Sektoren), mit Filter nach Betreiber und Technik und Suche nach eNB, Cell-ID, PCI, TAC.
 
@@ -41,7 +43,8 @@ In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Str
 
 1. Inhalt dieses Ordners in ein GitHub-Repository pushen.
 2. Der Workflow `.github/workflows/android.yml` baut bei jedem Push automatisch.
-3. Unter **Actions → letzter Lauf → Artifacts** liegt `funkstrecke-apk` (ZIP mit `app-debug.apk`).
+3. Unter **Actions → letzter Lauf → Artifacts** liegt `funkstrecke-apk` (ZIP mit der APK).
+   Für einen Download unter **Releases**: auf GitHub **Releases → Draft a new release**, Tag z. B. `v2.0` anlegen, **Publish release**. Der Workflow baut dann und hängt `funkstrecke-v2.0.apk` nach 3–5 Minuten an das Release.
 4. APK aufs Handy kopieren und installieren. Play Protect warnt bei Apps außerhalb des Play Stores, besonders wenn sie Standort und Telefonstatus nutzen: „Weitere Details → Trotzdem installieren“.
 
 Das Projekt enthält bewusst keine `gradlew`/`gradle-wrapper.jar` (ausführbare Dateien in ZIPs lösen manche Virenscanner aus). Für Android Studio einmal `gradle wrapper --gradle-version 8.11.1` im Projektordner ausführen oder das Projekt mit einer installierten Gradle-Version öffnen.
