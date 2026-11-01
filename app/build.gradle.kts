@@ -5,6 +5,14 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// Fester Signaturschlüssel aus GitHub-Secrets (siehe README). Nur mit immer demselben Schlüssel
+// kann Android eine installierte App aktualisieren, statt sie neu installieren zu müssen.
+val signingKeystore: String? = System.getenv("SIGNING_KEYSTORE_FILE")
+
+// Versionscode steigt mit jedem GitHub-Build automatisch; Versionsname aus dem Tag (v2.3 → 2.3).
+val runNumber: Int? = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+val tagName: String? = System.getenv("GITHUB_REF_NAME")?.takeIf { it.matches(Regex("v\\d+(\\.\\d+)*")) }
+
 android {
     namespace = "de.funkstrecke"
     compileSdk = 35
@@ -13,14 +21,29 @@ android {
         applicationId = "de.funkstrecke"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "2.2"
+        versionCode = if (runNumber != null) 100 + runNumber else 4
+        versionName = tagName?.removePrefix("v") ?: if (runNumber != null) "2.2-build$runNumber" else "2.2"
+    }
+
+    signingConfigs {
+        if (signingKeystore != null) {
+            create("funkstrecke") {
+                storeFile = file(signingKeystore)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
+        debug {
+            if (signingKeystore != null) signingConfig = signingConfigs.getByName("funkstrecke")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (signingKeystore != null) signingConfig = signingConfigs.getByName("funkstrecke")
         }
     }
 
