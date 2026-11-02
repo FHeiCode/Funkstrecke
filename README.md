@@ -18,6 +18,8 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 
 **Stationen** – alle jemals gehörten Zellen, gruppiert nach Basisstation (4G: eNodeB mit seinen Sektoren), mit Filter nach Betreiber und Technik und Suche nach eNB, Cell-ID, PCI, TAC.
 
+**PCI-Gruppen** – PCI = 3 · SSS-Gruppe + PSS-Index. Weil Sektoren eines Standorts meist dieselbe SSS-Gruppe nutzen, ordnet die App Nachbarzellen ohne Cell-ID einer bekannten Station mit gleicher Gruppe zu („vermutlich zugehörig“), geprüft über den Abstand der Messorte (≤ 3 km, „wahrscheinlich“ ≤ 1,5 km). Lose Zellen gleicher Gruppe an nahen Orten werden zu „vermuteten Stationen“ gebündelt. Im Live-Tab steht bei Nachbarzellen, wenn sie dieselbe Gruppe wie die verbundene Zelle haben.
+
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt
 - Timing-Advance-Werte als zusätzliche Abstandsmessungen
