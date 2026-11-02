@@ -34,13 +34,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.funkstrecke.service.Geofencer
+import de.funkstrecke.service.HomeStatus
+import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.ScanPreset
+import de.funkstrecke.util.formatDistance
 import de.funkstrecke.util.SettingsStore
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
     val settings by SettingsStore.flow.collectAsStateWithLifecycle()
+    val home by HomeStore.flow.collectAsStateWithLifecycle()
+    val homeStatus by Geofencer.status.collectAsStateWithLifecycle()
     val preset = ScanPreset.matching(settings)
 
     Scaffold(
@@ -85,6 +91,24 @@ fun SettingsScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.secondary,
                     )
+                }
+            }
+
+            Section("Heimatbasis") {
+                OutlinedCard(onClick = onHomeBase, modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text("Automatisch starten beim Verlassen", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            when {
+                                !home.hasPoint -> "Nicht eingerichtet. Tippen, um Ort und Radius festzulegen."
+                                home.enabled && homeStatus == HomeStatus.Active ->
+                                    "Aktiv · Radius ${formatDistance(home.radiusM.toDouble())}"
+                                home.enabled -> "Eingeschaltet, aber nicht aktiv. Tippen für Details."
+                                else -> "Ausgeschaltet · Radius ${formatDistance(home.radiusM.toDouble())}"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
 

@@ -75,7 +75,8 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     q.isEmpty() || s.title.lowercase().contains(q) ||
                         (s.plmn ?: "").contains(q) ||
                         s.area?.toString()?.contains(q) == true ||
-                        s.cells.any { c -> c.cellId?.toString()?.contains(q) == true || c.pci?.toString() == q }
+                        s.cells.any { c -> c.cellId?.toString()?.contains(q) == true || c.pci?.toString() == q } ||
+                        s.linked.any { l -> l.cell.pci?.toString() == q }
                     )
         }
     }
@@ -220,6 +221,8 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                 }
                 val detail = listOfNotNull(
                     if (station.cells.size > 1) "${station.cells.size} Zellen" else null,
+                    if (station.linked.isNotEmpty()) "+${station.linked.size} vermutet" else null,
+                    if (station.inferred) "vermutete Station" else null,
                     station.bands.joinToString(", ").ifEmpty { null },
                     station.estimate?.let { "Standort ±${formatDistance(it.radiusM)}" } ?: "kein Standort",
                 ).joinToString(" · ")

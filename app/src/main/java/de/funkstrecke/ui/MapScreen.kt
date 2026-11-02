@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.ui.theme.operatorColorRaw
+import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.formatDistance
 
@@ -35,6 +36,7 @@ import de.funkstrecke.util.formatDistance
 fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val stations by vm.stations.collectAsStateWithLifecycle()
     val located = remember(stations) { stations.filter { it.estimate != null } }
+    val home by HomeStore.flow.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val canLocate = remember { LocationHelper.hasPermission(context) }
     var recenterKey by rememberSaveable { mutableIntStateOf(0) }
@@ -83,9 +85,16 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            val homeLat = home.latitude
+            val homeLon = home.longitude
+            val homeCircle = if (homeLat != null && homeLon != null) {
+                listOf(MapCircle(homeLat, homeLon, home.radiusM.toDouble(), HomeBaseColor))
+            } else {
+                emptyList()
+            }
             OsmMap(
                 dots = dots,
-                circles = circles,
+                circles = homeCircle + circles,
                 modifier = Modifier.fillMaxSize(),
                 focus = MapFocus.OwnPosition(radiusM = 1_000.0),
                 recenterKey = recenterKey,

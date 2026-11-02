@@ -48,7 +48,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CellEntity
+import de.funkstrecke.data.LinkConfidence
 import de.funkstrecke.data.MeasurementEntity
+import de.funkstrecke.data.pciGroup
+import de.funkstrecke.data.pciPss
+import de.funkstrecke.data.supportsPciGroups
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
 import de.funkstrecke.ui.theme.signalLevel
@@ -72,7 +76,8 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
     val context = LocalContext.current
     val stations by vm.stations.collectAsStateWithLifecycle()
     val station = stations.firstOrNull { it.key == stationKey }
-    val measurementsFlow = remember(stationKey) { vm.measurementsFor(stationKey) }
+    val measurementKeys = station?.measurementKeys ?: listOf(stationKey)
+    val measurementsFlow = remember(measurementKeys) { vm.measurementsFor(measurementKeys) }
     val measurements by measurementsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
     Scaffold(
@@ -121,9 +126,18 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                     KeyValue("MNC", station.mnc ?: "–")
                     KeyValue(if (station.rat == "4G" || station.rat == "5G") "TAC" else "LAC", station.area?.toString() ?: "–")
                     station.nodeId?.let { KeyValue("eNodeB-ID", it.toString()) }
+                    if (station.pciGroups.isNotEmpty()) KeyValue("PCI-Gruppe (SSS)", station.pciGroups.joinToString(", "))
                     KeyValue("Technik", station.rat)
                     KeyValue("Bänder", station.bands.joinToString(", ").ifEmpty { "–" })
                     station.minDistanceM?.let { KeyValue("Min. Abstand (TA)", formatDistance(it.toDouble())) }
+                }
+                if (station.inferred) {
+                    Text(
+                        "Vermutete Station: Diese Zellen melden keine Cell-ID. Sie wurden zusammengefasst, weil sie dieselbe " +
+                            "PCI-Gruppe haben und an nahe beieinander liegenden Orten gemessen wurden.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
                 }
                 if (station.plmnInferred) {
                     Text(
@@ -178,6 +192,12 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 CellTable(station.rat, station.cells)
             }
 
+            if (station.linked.isNotEmpty()) {
+                Section("Vermutlich zugehörig (${station.linked.size})") {
+                    LinkedCells(station)
+                }
+            }
+
             if (measurements.isNotEmpty()) {
                 Section("Letzte Messungen") {
                     measurements.take(15).forEach { m -> MeasurementRow(station, m) }
@@ -229,10 +249,12 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
 
 @Composable
 private fun CellTable(rat: String, cells: List<CellEntity>) {
+    val groups = supportsPciGroups(rat)
     val headers = listOf(
         if (rat == "4G") "Sektor" else "Nr.",
         if (rat == "5G") "NCI" else if (rat == "4G") "ECI" else "CID",
         if (rat == "3G") "PSC" else if (rat == "2G") "BSIC" else "PCI",
+        if (groups) "SSS/PSS" else "",
         "Band", "ARFCN", "max dBm", "Scans",
     )
     val rows = cells.mapIndexed { i, c ->
@@ -240,13 +262,14 @@ private fun CellTable(rat: String, cells: List<CellEntity>) {
             c.sector?.toString() ?: (i + 1).toString(),
             c.cellId?.toString() ?: "–",
             c.pci?.toString() ?: "–",
+            if (groups) c.pci?.let { "${pciGroup(it)}/${pciPss(it)}" } ?: "–" else "",
             listOfNotNull(c.band, c.bandMhz?.let { "$it MHz" }).joinToString(" ").ifEmpty { "–" },
             c.arfcn?.toString() ?: "–",
             c.bestDbm?.toString() ?: "–",
             if (c.servingSamples > 0) "${c.samples} (${c.servingSamples}×v)" else c.samples.toString(),
         )
     }
-    val widths = listOf(56, 110, 56, 130, 72, 72, 96)
+    val widths = listOf(56, 110, 56, if (groups) 72 else 0, 130, 72, 72, 96)
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -259,7 +282,7 @@ private fun CellTable(rat: String, cells: List<CellEntity>) {
         ) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                 headers.forEachIndexed { i, h ->
-                    Text(
+                    if (widths[i] > 0) Text(
                         h,
                         modifier = Modifier.width(widths[i].dp),
                         style = MaterialTheme.typography.labelMedium,
@@ -272,7 +295,7 @@ private fun CellTable(rat: String, cells: List<CellEntity>) {
             rows.forEach { row ->
                 Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                     row.forEachIndexed { i, v ->
-                        Text(
+                        if (widths[i] > 0) Text(
                             v,
                             modifier = Modifier.width(widths[i].dp),
                             style = MaterialTheme.typography.bodySmall,
@@ -284,7 +307,11 @@ private fun CellTable(rat: String, cells: List<CellEntity>) {
         }
     }
     Text(
-        "v = als verbundene Zelle gesehen",
+        if (groups) {
+            "v = als verbundene Zelle gesehen · SSS/PSS = PCI-Gruppe N_ID1 / Index N_ID2 (PCI = 3·SSS + PSS)"
+        } else {
+            "v = als verbundene Zelle gesehen"
+        },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -293,6 +320,7 @@ private fun CellTable(rat: String, cells: List<CellEntity>) {
 @Composable
 private fun MeasurementRow(station: BaseStation, m: MeasurementEntity) {
     val cell = station.cells.firstOrNull { it.id == m.cellKey }
+        ?: station.linked.firstOrNull { it.cell.id == m.cellKey }?.cell
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(formatTime(m.time), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace, modifier = Modifier.width(72.dp))
         Text(
@@ -313,6 +341,72 @@ private fun MeasurementRow(station: BaseStation, m: MeasurementEntity) {
                 MaterialTheme.colorScheme.onSurface,
                 0.2f,
             ),
+        )
+    }
+}
+
+/** Nachbarzellen ohne Cell-ID, die über die PCI-Gruppe dieser Station zugeordnet wurden. */
+@Composable
+private fun LinkedCells(station: BaseStation) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        station.linked.forEach { l ->
+            val c = l.cell
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            buildString {
+                                append("PCI ${c.pci ?: "?"}")
+                                c.pci?.let { append("  (${pciGroup(it)}/${pciPss(it)})") }
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            l.confidence.label,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = if (l.confidence == LinkConfidence.LIKELY) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            },
+                        )
+                    }
+                    Text(
+                        listOfNotNull(
+                            listOfNotNull(c.band, c.bandMhz?.let { "$it MHz" }).joinToString(" ").ifEmpty { null },
+                            c.arfcn?.let { "ARFCN $it" },
+                            c.bestDbm?.let { "max $it dBm" },
+                            "${c.samples} Scans",
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                    val reason = buildString {
+                        val same = l.sameSectorAs
+                        if (same != null) {
+                            append("Gleiche PCI wie Sektor ${same.sector ?: same.cellId}: vermutlich derselbe Sektor auf einem anderen Träger.")
+                        } else {
+                            append("Gleiche PCI-Gruppe, anderer PSS-Index: vermutlich ein weiterer Sektor.")
+                        }
+                        l.distanceM?.let { append(" Messorte ${formatDistance(it)} vom Standort entfernt.") }
+                            ?: append(" Noch ohne GPS-Messung, nur über die PCI-Gruppe zugeordnet.")
+                    }
+                    Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+        Text(
+            "Diese Zellen melden keine Cell-ID. Zugeordnet nach der üblichen Netzplanung, bei der alle Sektoren " +
+                "eines Standorts dieselbe PCI-Gruppe (SSS) nutzen, und geprüft über den Abstand der Messorte. " +
+                "PCIs werden in einigen Kilometern Entfernung wiederverwendet; die Zuordnung ist deshalb eine Vermutung.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

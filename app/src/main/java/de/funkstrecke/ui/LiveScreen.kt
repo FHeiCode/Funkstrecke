@@ -53,11 +53,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import de.funkstrecke.data.pciGroup
+import de.funkstrecke.data.pciPss
+import de.funkstrecke.data.supportsPciGroups
 import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.radio.qualityLabel
 import de.funkstrecke.radio.signalLabel
+import de.funkstrecke.service.Geofencer
+import de.funkstrecke.service.HomeStatus
 import de.funkstrecke.service.LogState
 import de.funkstrecke.service.ScanService
+import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.ScanPreset
 import de.funkstrecke.util.ScanSettings
@@ -79,6 +85,9 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
     val serviceScan by ScanService.lastScan.collectAsStateWithLifecycle()
     val log by ScanService.state.collectAsStateWithLifecycle()
     val settings by SettingsStore.flow.collectAsStateWithLifecycle()
+    val home by HomeStore.flow.collectAsStateWithLifecycle()
+    val homeStatus by Geofencer.status.collectAsStateWithLifecycle()
+    val homeEnabled = home.enabled && homeStatus == HomeStatus.Active
     // Während der Aufzeichnung scannt nur der Dienst; die Live-Ansicht zeigt dessen Ergebnis.
     val live = if (log.running && serviceScan.at != null) serviceScan else ownScan
     val totalCells by vm.cellCount.collectAsStateWithLifecycle()
@@ -166,6 +175,7 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                 LoggingCard(
                     log = log,
                     settings = settings,
+                    homeEnabled = homeEnabled,
                     totalCells = totalCells,
                     onStart = { startLogging() },
                     onStop = { ScanService.stop(context) },
@@ -190,11 +200,11 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
             }
             if (serving.isNotEmpty()) {
                 item { SectionLabel(if (serving.size == 1) "Verbundene Zelle" else "Verbundene Zellen") }
-                items(serving, key = { "s|" + it.key }) { LiveCellCard(it) }
+                items(serving, key = { "s|" + it.key }) { LiveCellCard(it, null) }
             }
             if (neighbours.isNotEmpty()) {
                 item { SectionLabel("Nachbarzellen (${neighbours.size})") }
-                items(neighbours, key = { "n|" + it.key + "|" + it.arfcn }) { LiveCellCard(it) }
+                items(neighbours, key = { "n|" + it.key + "|" + it.arfcn }) { cell -> LiveCellCard(cell, siteHint(cell, serving)) }
             }
             if (live.cells.isNotEmpty()) {
                 item {
@@ -233,7 +243,14 @@ private fun PermissionCard(asked: Boolean, onRequest: () -> Unit) {
 }
 
 @Composable
-private fun LoggingCard(log: LogState, settings: ScanSettings, totalCells: Int, onStart: () -> Unit, onStop: () -> Unit) {
+private fun LoggingCard(
+    log: LogState,
+    settings: ScanSettings,
+    homeEnabled: Boolean,
+    totalCells: Int,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
     val running = log.running
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -278,6 +295,11 @@ private fun LoggingCard(log: LogState, settings: ScanSettings, totalCells: Int, 
                     }
                 }
             }
+            if (log.running && log.autoStarted) {
+                Text("Automatisch gestartet: Heimatbasis verlassen", style = MaterialTheme.typography.labelMedium)
+            } else if (!running && homeEnabled) {
+                Text("Heimatbasis aktiv: startet automatisch beim Verlassen", style = MaterialTheme.typography.labelMedium)
+            }
             val mode = ScanPreset.matching(settings)?.label ?: "Eigene Einstellung"
             val rhythm = buildString {
                 append("alle ${settings.recordIntervalS} s")
@@ -291,9 +313,24 @@ private fun LoggingCard(log: LogState, settings: ScanSettings, totalCells: Int, 
     }
 }
 
+/** Hinweis, wenn eine Nachbarzelle dieselbe PCI-Gruppe hat wie eine verbundene Zelle. */
+private fun siteHint(cell: CellRecord, serving: List<CellRecord>): String? {
+    val pci = cell.pci ?: return null
+    if (!supportsPciGroups(cell.rat)) return null
+    val match = serving.firstOrNull { s ->
+        s.rat == cell.rat && s.mcc == cell.mcc && s.mnc == cell.mnc && s.pci != null && pciGroup(s.pci) == pciGroup(pci)
+    } ?: return null
+    val where = match.nodeId?.let { "eNB $it" } ?: "die verbundene Zelle"
+    return if (match.pci == pci) {
+        "Gleiche PCI wie $where: vermutlich derselbe Sektor auf einem anderen Träger"
+    } else {
+        "Gleiche PCI-Gruppe wie $where: vermutlich ein anderer Sektor desselben Standorts"
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LiveCellCard(cell: CellRecord) {
+private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -329,11 +366,15 @@ private fun LiveCellCard(cell: CellRecord) {
                 cell.cellId?.let { KeyValue(if (cell.rat == "5G") "NCI" else if (cell.rat == "4G") "ECI" else "CID", it.toString()) }
                 if (cell.nodeId != null) KeyValue("eNB-Sektor", "${cell.nodeId}-${cell.sector}")
                 cell.pci?.let { KeyValue(if (cell.rat == "3G") "PSC" else if (cell.rat == "2G") "BSIC" else "PCI", it.toString()) }
+                if (supportsPciGroups(cell.rat)) cell.pci?.let { KeyValue("SSS/PSS", "${pciGroup(it)}/${pciPss(it)}") }
                 cell.arfcn?.let { KeyValue(if (cell.rat == "4G") "EARFCN" else if (cell.rat == "5G") "NR-ARFCN" else "ARFCN", it.toString()) }
                 cell.band?.downlinkMhz?.let { KeyValue("Downlink", String.format(Locale.GERMANY, "%.1f MHz", it)) }
                 cell.quality?.let { KeyValue(qualityLabel(cell.rat), "$it dB") }
                 cell.sinr?.let { KeyValue("SINR", "$it dB") }
                 cell.timingAdvance?.let { ta -> KeyValue("TA", cell.distanceM?.let { "$ta ≈ $it m" } ?: ta.toString()) }
+            }
+            if (siteHint != null) {
+                Text(siteHint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
             }
             if (cell.plmnInferred) {
                 Text(

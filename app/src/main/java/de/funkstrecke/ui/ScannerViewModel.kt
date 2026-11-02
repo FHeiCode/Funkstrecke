@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -29,9 +30,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private val db = AppDatabase.get(app)
     private val dao = db.cellDao()
 
-    val stations: StateFlow<List<BaseStation>> = combine(dao.observeCells(), dao.observeEstimates()) { cells, estimates ->
-        buildStations(cells, estimates)
+    val stations: StateFlow<List<BaseStation>> = combine(
+        dao.observeCells(),
+        dao.observeEstimates(),
+        dao.observeCentroids(),
+    ) { cells, estimates, centroids ->
+        buildStations(cells, estimates, centroids)
     }
+        .conflate()
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -53,11 +59,19 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         Recorder.record(db, cells, null, now)
     }
 
-    fun measurementsFor(groupKey: String): Flow<List<MeasurementEntity>> =
-        dao.observeMeasurementsForGroup(groupKey, 400)
+    fun measurementsFor(groupKeys: List<String>): Flow<List<MeasurementEntity>> =
+        if (groupKeys.size == 1) {
+            dao.observeMeasurementsForGroup(groupKeys[0], 400)
+        } else {
+            dao.observeMeasurementsForGroups(groupKeys, 600)
+        }
 
     fun recompute(station: BaseStation) {
-        viewModelScope.launch { Recorder.updateEstimate(db, station.key, station.rat) }
+        viewModelScope.launch {
+            // Vermutete Stationen haben keinen eigenen Datensatz: ihre Zellen einzeln neu berechnen.
+            val keys = if (station.inferred) station.cells.map { it.groupKey }.distinct() else listOf(station.key)
+            keys.forEach { Recorder.updateEstimate(db, it, station.rat) }
+        }
     }
 
     fun clearAll() {

@@ -49,6 +49,8 @@ data class LogState(
     val lastFixAt: Long? = null,
     val lastAccuracyM: Float? = null,
     val waitingForGps: Boolean = false,
+    /** Von der Heimatbasis gestartet statt von Hand */
+    val autoStarted: Boolean = false,
 )
 
 /**
@@ -64,6 +66,7 @@ class ScanService : Service() {
     private var lastScanLocation: Location? = null
     private var scanJob: Job? = null
     private var settingsJob: Job? = null
+    private var autoStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -74,6 +77,7 @@ class ScanService : Service() {
         }
         if (listener != null) return START_NOT_STICKY
         SettingsStore.init(this)
+        autoStarted = intent?.getBooleanExtra(EXTRA_AUTO, false) == true
         if (!LocationHelper.hasPermission(this)) {
             stopSelf()
             return START_NOT_STICKY
@@ -83,10 +87,17 @@ class ScanService : Service() {
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("Warte auf GPS …"), type)
         } catch (e: Exception) {
+            // Z. B. fehlt „Standort: Immer zulassen“ für einen Start aus dem Hintergrund.
+            if (autoStarted) Geofencer.notifyStartFailed(this)
             stopSelf()
             return START_NOT_STICKY
         }
-        _state.value = LogState(running = true, startedAt = System.currentTimeMillis(), waitingForGps = true)
+        _state.value = LogState(
+            running = true,
+            startedAt = System.currentTimeMillis(),
+            waitingForGps = true,
+            autoStarted = autoStarted,
+        )
         if (!startLocationUpdates()) {
             _state.update { it.copy(waitingForGps = true) }
             updateNotification("Standort ist ausgeschaltet")
@@ -192,7 +203,7 @@ class ScanService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_scan)
-            .setContentTitle("Funkstrecke zeichnet auf")
+            .setContentTitle(if (autoStarted) "Heimatbasis verlassen: Aufzeichnung läuft" else "Funkstrecke zeichnet auf")
             .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -225,8 +236,14 @@ class ScanService : Service() {
         private val _lastScan = MutableStateFlow(LiveScan())
         val lastScan: StateFlow<LiveScan> = _lastScan.asStateFlow()
 
-        fun start(context: Context) {
-            ContextCompat.startForegroundService(context, Intent(context, ScanService::class.java))
+        private const val EXTRA_AUTO = "auto"
+
+        /** [auto] = von der Heimatbasis ausgelöst (Hinweistext in der Benachrichtigung) */
+        fun start(context: Context, auto: Boolean = false) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ScanService::class.java).putExtra(EXTRA_AUTO, auto),
+            )
         }
 
         fun stop(context: Context) {

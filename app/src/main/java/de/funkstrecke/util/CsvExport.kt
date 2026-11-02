@@ -6,6 +6,9 @@ import androidx.core.content.FileProvider
 import de.funkstrecke.data.CellEntity
 import de.funkstrecke.data.EstimateEntity
 import de.funkstrecke.data.MeasurementEntity
+import de.funkstrecke.data.pciGroup
+import de.funkstrecke.data.pciPss
+import de.funkstrecke.data.supportsPciGroups
 import de.funkstrecke.radio.Operators
 import java.io.File
 import java.time.LocalDate
@@ -27,7 +30,7 @@ object CsvExport {
         val byGroup = estimates.associateBy { it.groupKey }
         val header = listOf(
             "Technik", "Betreiber", "MCC", "MNC", "MCC/MNC abgeleitet", "TAC/LAC", "Cell-ID", "eNB-ID", "Sektor",
-            "PCI/PSC/BSIC", "ARFCN", "Band", "Band (MHz)", "Downlink (MHz)", "Bester Pegel (dBm)",
+            "PCI/PSC/BSIC", "PCI-Gruppe (SSS)", "PSS", "ARFCN", "Band", "Band (MHz)", "Downlink (MHz)", "Bester Pegel (dBm)",
             "Letzter Pegel (dBm)", "Letzte Qualität (dB)", "Letztes SINR (dB)", "Min. Abstand TA (m)", "Scans",
             "Davon verbunden", "Station", "Geschätzte Breite", "Geschätzte Länge", "Radius (m)", "Methode",
             "Erstmals gesehen", "Zuletzt gesehen",
@@ -36,7 +39,10 @@ object CsvExport {
             val e = byGroup[c.groupKey]
             listOf(
                 c.rat, Operators.name(c.mcc, c.mnc) ?: "", str(c.mcc), str(c.mnc), if (c.plmnInferred) "ja" else "nein",
-                str(c.area), str(c.cellId), str(c.nodeId), str(c.sector), str(c.pci), str(c.arfcn), str(c.band),
+                str(c.area), str(c.cellId), str(c.nodeId), str(c.sector), str(c.pci),
+                if (supportsPciGroups(c.rat)) str(c.pci?.let(::pciGroup)) else "",
+                if (supportsPciGroups(c.rat)) str(c.pci?.let(::pciPss)) else "",
+                str(c.arfcn), str(c.band),
                 str(c.bandMhz), num(c.freqMhz), str(c.bestDbm), str(c.lastDbm), str(c.lastQuality), str(c.lastSinr),
                 str(c.minDistanceM), str(c.samples), str(c.servingSamples), c.groupKey,
                 num(e?.latitude), num(e?.longitude), num(e?.radiusM?.toInt()), e?.method ?: "",

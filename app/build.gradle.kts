@@ -22,7 +22,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = if (runNumber != null) 100 + runNumber else 4
-        versionName = tagName?.removePrefix("v") ?: if (runNumber != null) "2.2-build$runNumber" else "2.2"
+        versionName = tagName?.removePrefix("v") ?: if (runNumber != null) "2.4-build$runNumber" else "2.4"
     }
 
     signingConfigs {
@@ -83,4 +83,6 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.osmdroid:osmdroid-android:6.1.20")
+    // Geofencing für die Heimatbasis
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }

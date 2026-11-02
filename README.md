@@ -16,7 +16,11 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 
 **Einstellungen** (Zahnrad im Live-Tab) – Energiemodus *Genau* (alle 3 s), *Ausgewogen* (alle 10 s ab 15 m Bewegung, Standard) oder *Sparsam* (alle 30 s ab 50 m, Modem-Zwischenspeicher), oder einzeln: Scan-Intervall, Mindestabstand, Live-Takt, frische Messung an/aus. GPS wird nur so oft abgefragt, wie gescannt wird.
 
+**Heimatbasis** (Einstellungen → Heimatbasis) – Ort per langem Druck auf die Karte oder aktuelle Position, Radius 100 m–2 km. Verlässt du den Kreis, startet die Aufzeichnung automatisch, bei Rückkehr stoppt sie (abschaltbar). Nutzt Geofencing der Google-Play-Dienste und braucht „Standort: Immer zulassen“. Android meldet das Verlassen meist mit 1–3 Minuten Verzögerung. Nach einem Neustart wird die Heimatbasis automatisch neu angemeldet.
+
 **Stationen** – alle jemals gehörten Zellen, gruppiert nach Basisstation (4G: eNodeB mit seinen Sektoren), mit Filter nach Betreiber und Technik und Suche nach eNB, Cell-ID, PCI, TAC.
+
+**PCI-Gruppen** – PCI = 3 · SSS-Gruppe + PSS-Index. Weil Sektoren eines Standorts meist dieselbe SSS-Gruppe nutzen, ordnet die App Nachbarzellen ohne Cell-ID einer bekannten Station mit gleicher Gruppe zu („vermutlich zugehörig“), geprüft über den Abstand der Messorte (≤ 3 km, „wahrscheinlich“ ≤ 1,5 km). Lose Zellen gleicher Gruppe an nahen Orten werden zu „vermuteten Stationen“ gebündelt. Im Live-Tab steht bei Nachbarzellen, wenn sie dieselbe Gruppe wie die verbundene Zelle haben.
 
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt

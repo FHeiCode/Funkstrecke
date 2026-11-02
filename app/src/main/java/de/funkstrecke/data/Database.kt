@@ -111,6 +111,16 @@ interface CellDao {
     @Query("SELECT * FROM estimates")
     fun observeEstimates(): Flow<List<EstimateEntity>>
 
+    /** Mittelpunkt der Messorte je Zelle, für die Zuordnung über die PCI-Gruppe */
+    @Query(
+        "SELECT cellKey, AVG(latitude) AS latitude, AVG(longitude) AS longitude, COUNT(*) AS n " +
+            "FROM measurements WHERE accuracyM IS NULL OR accuracyM <= 50 GROUP BY cellKey",
+    )
+    fun observeCentroids(): Flow<List<CellCentroid>>
+
+    @Query("SELECT * FROM measurements WHERE groupKey IN (:groupKeys) ORDER BY time DESC LIMIT :limit")
+    fun observeMeasurementsForGroups(groupKeys: List<String>, limit: Int): Flow<List<MeasurementEntity>>
+
     @Query("SELECT * FROM estimates")
     suspend fun allEstimatesOnce(): List<EstimateEntity>
 

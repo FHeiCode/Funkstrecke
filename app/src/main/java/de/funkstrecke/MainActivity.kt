@@ -1,5 +1,6 @@
 package de.funkstrecke
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -26,6 +27,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import de.funkstrecke.service.Geofencer
+import de.funkstrecke.service.ScanService
+import de.funkstrecke.ui.HomeBaseScreen
 import de.funkstrecke.ui.LiveScreen
 import de.funkstrecke.ui.MapScreen
 import de.funkstrecke.ui.ScannerViewModel
@@ -33,6 +37,7 @@ import de.funkstrecke.ui.SettingsScreen
 import de.funkstrecke.ui.StationDetailScreen
 import de.funkstrecke.ui.StationsScreen
 import de.funkstrecke.ui.theme.FunkTheme
+import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.SettingsStore
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -47,6 +52,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SettingsStore.init(this)
+        HomeStore.init(this)
+        // Heimatbasis neu anmelden (geht z. B. verloren, wenn der Standort zwischendurch aus war).
+        Geofencer.sync(this)
+        handleIntent(intent)
         enableEdgeToEdge()
         setContent {
             FunkTheme {
@@ -86,7 +95,10 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
                     ) {
                         composable("live") { LiveScreen(vm, onSettings = { nav.navigate("settings") }) }
-                        composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
+                        composable("settings") {
+                            SettingsScreen(onBack = { nav.popBackStack() }, onHomeBase = { nav.navigate("home") })
+                        }
+                        composable("home") { HomeBaseScreen(onBack = { nav.popBackStack() }) }
                         composable("stations") { StationsScreen(vm, onOpen = ::openStation) }
                         composable("map") { MapScreen(vm, onOpen = ::openStation) }
                         composable(
@@ -103,5 +115,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    /** Tippen auf den Hinweis „Heimatbasis verlassen“ startet die Aufzeichnung aus dem Vordergrund. */
+    private fun handleIntent(intent: Intent?) {
+        if (intent?.action == ACTION_START_RECORDING) {
+            runCatching { ScanService.start(this, auto = true) }
+        }
+    }
+
+    companion object {
+        const val ACTION_START_RECORDING = "de.funkstrecke.START_RECORDING"
     }
 }
