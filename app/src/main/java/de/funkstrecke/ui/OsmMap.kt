@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -27,9 +26,7 @@ import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
-import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.views.overlay.CopyrightOverlay
-import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polygon
@@ -127,8 +124,6 @@ fun OsmMap(
     focus: MapFocus = MapFocus.FitAll,
     recenterKey: Int = 0,
     interactive: Boolean = true,
-    /** Langes Drücken auf die Karte liefert die Koordinaten (z. B. zum Setzen der Heimatbasis) */
-    onLongPress: ((latitude: Double, longitude: Double) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -180,24 +175,6 @@ fun OsmMap(
                 mapView.overlays.add(this)
             }
         }
-    }
-
-    val longPress = rememberUpdatedState(onLongPress)
-    remember {
-        if (onLongPress != null) {
-            mapView.overlays.add(
-                0,
-                MapEventsOverlay(object : MapEventsReceiver {
-                    override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean = false
-                    override fun longPressHelper(p: GeoPoint?): Boolean {
-                        val point = p ?: return false
-                        longPress.value?.invoke(point.latitude, point.longitude)
-                        return true
-                    }
-                }),
-            )
-        }
-        true
     }
 
     val lifecycle = LocalLifecycleOwner.current.lifecycle

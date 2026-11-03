@@ -59,11 +59,8 @@ import de.funkstrecke.data.supportsPciGroups
 import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.radio.qualityLabel
 import de.funkstrecke.radio.signalLabel
-import de.funkstrecke.service.Geofencer
-import de.funkstrecke.service.HomeStatus
 import de.funkstrecke.service.LogState
 import de.funkstrecke.service.ScanService
-import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.ScanPreset
 import de.funkstrecke.util.ScanSettings
@@ -85,9 +82,6 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
     val serviceScan by ScanService.lastScan.collectAsStateWithLifecycle()
     val log by ScanService.state.collectAsStateWithLifecycle()
     val settings by SettingsStore.flow.collectAsStateWithLifecycle()
-    val home by HomeStore.flow.collectAsStateWithLifecycle()
-    val homeStatus by Geofencer.status.collectAsStateWithLifecycle()
-    val homeEnabled = home.enabled && homeStatus == HomeStatus.Active
     // Während der Aufzeichnung scannt nur der Dienst; die Live-Ansicht zeigt dessen Ergebnis.
     val live = if (log.running && serviceScan.at != null) serviceScan else ownScan
     val totalCells by vm.cellCount.collectAsStateWithLifecycle()
@@ -175,7 +169,6 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                 LoggingCard(
                     log = log,
                     settings = settings,
-                    homeEnabled = homeEnabled,
                     totalCells = totalCells,
                     onStart = { startLogging() },
                     onStop = { ScanService.stop(context) },
@@ -243,14 +236,7 @@ private fun PermissionCard(asked: Boolean, onRequest: () -> Unit) {
 }
 
 @Composable
-private fun LoggingCard(
-    log: LogState,
-    settings: ScanSettings,
-    homeEnabled: Boolean,
-    totalCells: Int,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-) {
+private fun LoggingCard(log: LogState, settings: ScanSettings, totalCells: Int, onStart: () -> Unit, onStop: () -> Unit) {
     val running = log.running
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -294,11 +280,6 @@ private fun LoggingCard(
                         Text("Start")
                     }
                 }
-            }
-            if (log.running && log.autoStarted) {
-                Text("Automatisch gestartet: Heimatbasis verlassen", style = MaterialTheme.typography.labelMedium)
-            } else if (!running && homeEnabled) {
-                Text("Heimatbasis aktiv: startet automatisch beim Verlassen", style = MaterialTheme.typography.labelMedium)
             }
             val mode = ScanPreset.matching(settings)?.label ?: "Eigene Einstellung"
             val rhythm = buildString {
