@@ -42,6 +42,19 @@ data class LinkedCell(
     val sameSectorAs: CellEntity?,
 )
 
+/**
+ * Zwei verschiedene Zellen mit derselben PCI auf demselben Träger (also im gleichen Band) in der Nähe.
+ * Handys können sie dann verwechseln (PCI-Konfusion), Übergaben schlagen fehl.
+ * Gleiche PCIs auf anderen Bändern oder anderen Trägern sind unkritisch und werden nicht gemeldet.
+ */
+data class PciConflict(
+    val cell: CellEntity,
+    val other: CellEntity,
+    val otherStationKey: String,
+    val otherTitle: String,
+    val distanceM: Double,
+)
+
 /** Eine Basisstation aus Sicht der App: ein eNodeB mit seinen Sektoren, sonst eine einzelne Zelle. */
 data class BaseStation(
     val key: String,
@@ -58,6 +71,8 @@ data class BaseStation(
     val inferred: Boolean = false,
     /** NR-Zellen, die als 5G-NSA-Zweig (EN-DC) mit dieser LTE-Station gemessen wurden */
     val nrLegs: List<CellEntity> = emptyList(),
+    /** Gleiche PCI auf gleichem Träger bei einer nahen anderen Station */
+    val pciConflicts: List<PciConflict> = emptyList(),
 ) {
     /** EN-DC war über diese Station verbunden */
     val endcConnected: Boolean get() = cells.any { it.endcConnectedSamples > 0 }
@@ -101,6 +116,8 @@ data class BaseStation(
 private const val LINK_MAX_DISTANCE_M = 3_000.0
 private const val LINK_LIKELY_DISTANCE_M = 1_500.0
 private const val CLUSTER_DISTANCE_M = 1_500.0
+/** Bis zu diesem Abstand gilt gleiche PCI auf gleichem Träger als Konflikt */
+private const val PCI_CONFLICT_DISTANCE_M = 5_000.0
 
 private fun distanceM(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
     val kx = 111_320.0 * cos((aLat + bLat) / 2 * PI / 180.0)
@@ -217,9 +234,32 @@ fun buildStations(
         )
     }
 
+    // PCI-Konflikte: gleiche Technik, gleiches Netz, gleicher Träger (ARFCN, damit auch gleiches Band),
+    // gleiche PCI, aber verschiedene Stationen, deren Standorte höchstens PCI_CONFLICT_DISTANCE_M auseinanderliegen.
+    val stationOf = anchors.associateBy { it.key }
+    val conflicts = mutableMapOf<String, MutableList<PciConflict>>()
+    anchors.flatMap { s -> s.cells.filter { it.cellId != null && it.pci != null && it.arfcn != null }.map { s to it } }
+        .groupBy { (_, c) -> listOf(c.rat, c.mcc, c.mnc, c.arfcn, c.pci) }
+        .values
+        .filter { list -> list.map { it.first.key }.distinct().size > 1 }
+        .forEach { list ->
+            for ((s, c) in list) {
+                for ((o, oc) in list) {
+                    if (o.key == s.key) continue
+                    val a = anchorPosition[s.key] ?: continue
+                    val b = anchorPosition[o.key] ?: continue
+                    val d = distanceM(a.first, a.second, b.first, b.second)
+                    if (d <= PCI_CONFLICT_DISTANCE_M) {
+                        conflicts.getOrPut(s.key) { mutableListOf() } += PciConflict(c, oc, o.key, stationOf.getValue(o.key).title, d)
+                    }
+                }
+            }
+        }
+
     val result = anchors.map { s ->
         val links = linkedTo[s.key]
-        if (links == null) s else s.copy(linked = links.sortedWith(compareBy<LinkedCell> { it.cell.pci ?: 0 }.thenBy { it.cell.arfcn ?: 0 }))
+        val withLinks = if (links == null) s else s.copy(linked = links.sortedWith(compareBy<LinkedCell> { it.cell.pci ?: 0 }.thenBy { it.cell.arfcn ?: 0 }))
+        conflicts[s.key]?.let { withLinks.copy(pciConflicts = it.sortedBy { c -> c.distanceM }) } ?: withLinks
     }.toMutableList()
 
     // 3) Übrige lose Zellen mit gleicher PCI-Gruppe und nahen Messorten zu vermuteten Stationen bündeln.

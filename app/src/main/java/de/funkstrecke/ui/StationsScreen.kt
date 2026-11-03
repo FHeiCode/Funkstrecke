@@ -232,6 +232,14 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                     station.estimate?.let { "Standort ±${formatDistance(it.radiusM)}" } ?: "kein Standort",
                 ).joinToString(" · ")
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (station.pciConflicts.isNotEmpty()) {
+                    val c = station.pciConflicts.first()
+                    Text(
+                        "PCI-Konflikt: PCI ${c.cell.pci} auch bei ${c.otherTitle} (${formatDistance(c.distanceM)})",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Text(
                     "zuletzt ${formatAgo(station.lastSeen)}",
                     style = MaterialTheme.typography.labelSmall,

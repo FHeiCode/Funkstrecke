@@ -189,6 +189,28 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 }
             }
 
+            if (station.pciConflicts.isNotEmpty()) {
+                Section("PCI-Konflikt") {
+                    station.pciConflicts.forEach { c ->
+                        Text(
+                            "Sektor ${c.cell.sector ?: c.cell.cellId} (PCI ${c.cell.pci}, ${c.cell.band ?: "?"}, ARFCN ${c.cell.arfcn}) " +
+                                "↔ ${c.otherTitle} Sektor ${c.other.sector ?: c.other.cellId} · ${formatDistance(c.distanceM)} entfernt",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Text(
+                        "Zwei verschiedene Zellen nutzen dieselbe PCI auf demselben Träger und liegen nahe beieinander. " +
+                            "Handys können sie verwechseln; Übergaben zwischen ihnen können fehlschlagen. " +
+                            "Gleiche PCIs auf anderen Bändern oder Trägern sind dagegen üblich und werden nicht gemeldet. " +
+                            "Grundlage sind die geschätzten Standorte; bei großen Unsicherheitskreisen ist die Warnung entsprechend unsicher.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
             if (station.rat == "4G" && (station.endcAvailable || station.nrLegs.isNotEmpty())) {
                 Section("5G NSA (EN-DC)") {
                     EndcSection(station)

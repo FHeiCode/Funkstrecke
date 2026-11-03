@@ -38,6 +38,7 @@ import de.funkstrecke.util.Busy
 import de.funkstrecke.util.CallBehavior
 import de.funkstrecke.util.CallGuard
 import de.funkstrecke.util.LocationHelper
+import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatDistance
 import kotlinx.coroutines.CoroutineScope
@@ -67,6 +68,9 @@ enum class RecordPhase {
 
     /** Nur grobe Position (Zug, Tunnel, Gebäude): Zellen weiter erfassen, Messpunkte zählen nicht für die Schätzung */
     COARSE,
+
+    /** Vom Nutzer pausiert: GPS aus, keine Scans */
+    PAUSED,
 }
 
 /** Zustand der Hintergrund-Aufzeichnung, für die Oberfläche beobachtbar. */
@@ -118,15 +122,28 @@ class ScanService : Service() {
     private var scanJob: Job? = null
     private var settingsJob: Job? = null
     private var autoStarted = false
+    private var started = false
+    private var pauseJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_PAUSE -> {
+                val minutes = intent.getIntExtra(EXTRA_MINUTES, -1)
+                PauseStore.pause(this, if (minutes > 0) minutes else null)
+                return START_NOT_STICKY
+            }
+            ACTION_RESUME -> {
+                PauseStore.resume(this)
+                return START_NOT_STICKY
+            }
         }
-        if (tracking) return START_NOT_STICKY
+        if (started) return START_NOT_STICKY
         SettingsStore.init(this)
         EndcMonitor.start(this)
         autoStarted = intent?.getBooleanExtra(EXTRA_AUTO, false) == true
@@ -144,6 +161,7 @@ class ScanService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
+        started = true
         val now = System.currentTimeMillis()
         _state.value = LogState(
             running = true,
@@ -153,12 +171,24 @@ class ScanService : Service() {
             phase = RecordPhase.WAITING,
             phaseSince = now,
         )
-        if (!startLocationUpdates()) {
-            updateNotification("Standort ist ausgeschaltet")
+        // Pause beachten: Während einer Pause sind GPS und Scans aus, danach geht es von selbst weiter.
+        PauseStore.init(this)
+        pauseJob = scope.launch {
+            PauseStore.pausedUntil.collect { until ->
+                if (until > System.currentTimeMillis()) {
+                    stopLocationUpdates()
+                    setPhase(RecordPhase.PAUSED, System.currentTimeMillis())
+                } else {
+                    if (_state.value.phase == RecordPhase.PAUSED) setPhase(RecordPhase.WAITING, System.currentTimeMillis())
+                    if (!tracking && !startLocationUpdates()) updateNotification("Standort ist ausgeschaltet")
+                }
+                refreshNotification()
+            }
         }
         // Geänderte Einstellungen sofort übernehmen.
         settingsJob = scope.launch {
             SettingsStore.flow.drop(1).collect {
+                if (PauseStore.isPaused()) return@collect
                 stopLocationUpdates()
                 startLocationUpdates()
             }
@@ -239,6 +269,7 @@ class ScanService : Service() {
     }
 
     private fun onFix(location: Location) {
+        if (PauseStore.isPaused()) return
         val now = System.currentTimeMillis()
         val settings = SettingsStore.current
         val accuracy = if (location.hasAccuracy()) location.accuracy else Float.MAX_VALUE
@@ -322,6 +353,7 @@ class ScanService : Service() {
             RecordPhase.MOVING -> "In Bewegung · GPS $acc"
             RecordPhase.STATIONARY -> "Stillstand${if (minutes > 0) " seit $minutes min" else ""} · Zellen jede Minute"
             RecordPhase.COARSE -> "Kein genaues GPS${if (minutes > 0) " seit $minutes min" else ""} ($acc) · Zellen werden weiter erfasst"
+            RecordPhase.PAUSED -> "Pausiert ${PauseStore.describe(PauseStore.pausedUntil.value)} · GPS aus"
         }
         val reason = when (s.busy) {
             Busy.CALL -> "Telefonat" to SettingsStore.callBehavior.value
@@ -367,9 +399,23 @@ class ScanService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
+            .apply {
+                if (PauseStore.isPaused()) {
+                    addAction(0, "Fortsetzen", serviceAction(ACTION_RESUME, 2))
+                } else {
+                    addAction(0, "Pause 30 min", serviceAction(ACTION_PAUSE, 3) { putExtra(EXTRA_MINUTES, 30) })
+                }
+            }
             .addAction(0, "Stopp", stop)
             .build()
     }
+
+    private fun serviceAction(action: String, requestCode: Int, extras: Intent.() -> Unit = {}): PendingIntent =
+        PendingIntent.getService(
+            this, requestCode,
+            Intent(this, ScanService::class.java).setAction(action).apply(extras),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
 
     private fun updateNotification(text: String) {
         getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, notification(text))
@@ -378,6 +424,8 @@ class ScanService : Service() {
     override fun onDestroy() {
         stopLocationUpdates()
         settingsJob?.cancel()
+        pauseJob?.cancel()
+        started = false
         scope.cancel()
         _state.update { it.copy(running = false, waitingForGps = false) }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -388,6 +436,9 @@ class ScanService : Service() {
         private const val CHANNEL_ID = "logging"
         private const val NOTIFICATION_ID = 42
         private const val ACTION_STOP = "de.funkstrecke.STOP"
+        private const val ACTION_PAUSE = "de.funkstrecke.PAUSE"
+        private const val ACTION_RESUME = "de.funkstrecke.RESUME"
+        private const val EXTRA_MINUTES = "minutes"
 
         /** Ab dieser Genauigkeit zählt eine Position als genau (wie in der Standortschätzung). */
         const val PRECISE_ACCURACY_M = 30f

@@ -42,6 +42,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,6 +78,7 @@ import de.funkstrecke.service.ScanService
 import de.funkstrecke.util.Busy
 import de.funkstrecke.util.CallBehavior
 import de.funkstrecke.util.HomeStore
+import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.ScanPreset
 import de.funkstrecke.util.ScanSettings
@@ -99,6 +106,8 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
     // Während der Aufzeichnung scannt nur der Dienst; die Live-Ansicht zeigt dessen Ergebnis.
     val live = if (log.running && serviceScan.at != null) serviceScan else ownScan
     val liveBusy by vm.liveBusy.collectAsStateWithLifecycle()
+    val pausedUntil by PauseStore.pausedUntil.collectAsStateWithLifecycle()
+    val livePaused = pausedUntil > System.currentTimeMillis()
     val callBehavior by SettingsStore.callBehavior.collectAsStateWithLifecycle()
     val dataBehavior by SettingsStore.dataBehavior.collectAsStateWithLifecycle()
     val busy = if (log.running) log.busy else liveBusy
@@ -121,8 +130,8 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
     LaunchedEffect(Unit) {
         if (!hasPermission) permissionLauncher.launch(LocationHelper.permissions)
     }
-    LaunchedEffect(hasPermission, log.running, settings.liveIntervalS, settings.forceRefresh) {
-        if (!hasPermission || log.running) return@LaunchedEffect
+    LaunchedEffect(hasPermission, log.running, settings.liveIntervalS, settings.forceRefresh, livePaused) {
+        if (!hasPermission || log.running || livePaused) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
                 vm.refreshLive(settings.forceRefresh)
@@ -196,6 +205,9 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                     totalCells = totalCells,
                     onStart = { startLogging() },
                     onStop = { ScanService.stop(context) },
+                    pausedUntil = pausedUntil,
+                    onPause = { minutes -> PauseStore.pause(context, minutes) },
+                    onResume = { PauseStore.resume(context) },
                 )
             }
             if (busy != Busy.NONE && busyBehavior != CallBehavior.NORMAL) {
@@ -297,8 +309,13 @@ private fun LoggingCard(
     totalCells: Int,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    pausedUntil: Long,
+    onPause: (minutes: Int?) -> Unit,
+    onResume: () -> Unit,
 ) {
     val running = log.running
+    val paused = pausedUntil > System.currentTimeMillis()
+    var pauseMenu by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -310,12 +327,19 @@ private fun LoggingCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(
-                        if (running) "Aufzeichnung läuft" else "Aufzeichnung mit GPS",
+                        when {
+                            paused -> "Scans pausiert"
+                            running -> "Aufzeichnung läuft"
+                            else -> "Aufzeichnung mit GPS"
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
-                        if (running) {
+                        if (paused) {
+                            "Pausiert ${PauseStore.describe(pausedUntil)}. GPS und Zell-Scans sind aus" +
+                                (if (homeEnabled) ", die Heimatbasis startet nichts." else ".")
+                        } else if (running) {
                             "${log.scans} Scans · ${log.measurements} Messwerte"
                         } else {
                             "Bewege dich durch die Umgebung. Jede Position verbessert die Schätzung der Mast-Standorte."
@@ -324,7 +348,13 @@ private fun LoggingCard(
                     )
                 }
                 Spacer(Modifier.width(12.dp))
-                if (running) {
+                if (paused) {
+                    Button(onClick = onResume) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Fortsetzen")
+                    }
+                } else if (running) {
                     Button(
                         onClick = onStop,
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
@@ -341,7 +371,28 @@ private fun LoggingCard(
                     }
                 }
             }
-            if (running) PhaseLine(log)
+            // Pause anbieten, solange etwas im Hintergrund scannen kann (Aufzeichnung oder Heimatbasis).
+            if (!paused && (running || homeEnabled)) {
+                Box {
+                    OutlinedButton(onClick = { pauseMenu = true }) {
+                        Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (running) "Pausieren …" else "Automatik pausieren …")
+                    }
+                    DropdownMenu(expanded = pauseMenu, onDismissRequest = { pauseMenu = false }) {
+                        PauseStore.choices.forEach { (label, minutes) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    pauseMenu = false
+                                    onPause(minutes)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            if (running && !paused) PhaseLine(log)
             if (log.running && log.autoStarted) {
                 Text("Automatisch gestartet: Heimatbasis verlassen", style = MaterialTheme.typography.labelMedium)
             } else if (!running && homeEnabled) {
@@ -368,10 +419,14 @@ private fun siteHint(cell: CellRecord, serving: List<CellRecord>): String? {
         s.rat == cell.rat && s.mcc == cell.mcc && s.mnc == cell.mnc && s.pci != null && pciGroup(s.pci) == pciGroup(pci)
     } ?: return null
     val where = match.nodeId?.let { "eNB $it" } ?: "die verbundene Zelle"
-    return if (match.pci == pci) {
-        "Gleiche PCI wie $where: vermutlich derselbe Sektor auf einem anderen Träger"
-    } else {
-        "Gleiche PCI-Gruppe wie $where: vermutlich ein anderer Sektor desselben Standorts"
+    val band = cell.band?.label
+    val sameBand = band != null && band == match.band?.label
+    return when {
+        match.pci != pci -> "Gleiche PCI-Gruppe wie $where: vermutlich ein anderer Sektor desselben Standorts"
+        // Gleiche PCI, gleicher Träger, ohne eigene Cell-ID: das ist die verbundene Zelle selbst.
+        sameBand && cell.arfcn == match.arfcn -> null
+        sameBand -> "Gleiche PCI wie $where auf weiterem Träger im selben Band: vermutlich derselbe Sektor"
+        else -> "Gleiche PCI wie $where auf anderem Band (${band ?: "?"}): üblich, vermutlich derselbe Sektor"
     }
 }
 
@@ -421,7 +476,7 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
                 cell.timingAdvance?.let { ta -> KeyValue("TA", cell.distanceM?.let { "$ta ≈ $it m" } ?: ta.toString()) }
             }
             if (siteHint != null) {
-                Text(siteHint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+                Text(siteHint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (cell.plmnInferred) {
                 Text(
@@ -452,6 +507,7 @@ private fun PhaseLine(log: LogState) {
         RecordPhase.MOVING -> "In Bewegung · GPS $acc" to "Jeder Scan wird als Messpunkt gespeichert."
         RecordPhase.STATIONARY -> "Stillstand seit $since · GPS $acc" to
             "Zellen werden jede Minute aufgefrischt. Neue Messpunkte gibt es erst wieder nach Bewegung."
+        RecordPhase.PAUSED -> "Pausiert" to "GPS und Zell-Scans sind aus."
         RecordPhase.COARSE -> "Kein genaues GPS seit $since · $acc" to
             "Zellen werden weiter erfasst. Messpunkte mit dieser Genauigkeit fließen nicht in die Standortschätzung ein."
     }

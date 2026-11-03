@@ -21,6 +21,7 @@ import de.funkstrecke.MainActivity
 import de.funkstrecke.R
 import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
+import de.funkstrecke.util.PauseStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -170,6 +171,8 @@ class GeofenceReceiver : BroadcastReceiver() {
         if (!home.enabled) return
         when (event.geofenceTransition) {
             Geofence.GEOFENCE_TRANSITION_EXIT -> {
+                PauseStore.init(context)
+                if (PauseStore.isPaused()) return
                 // Geofence-Ereignisse dürfen laut Android einen Vordergrunddienst aus dem Hintergrund starten.
                 val started = runCatching { ScanService.start(context, auto = true) }.isSuccess
                 if (!started) Geofencer.notifyStartFailed(context)

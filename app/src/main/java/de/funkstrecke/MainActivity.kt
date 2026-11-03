@@ -39,6 +39,7 @@ import de.funkstrecke.ui.StationDetailScreen
 import de.funkstrecke.ui.StationsScreen
 import de.funkstrecke.ui.theme.FunkTheme
 import de.funkstrecke.util.HomeStore
+import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.SettingsStore
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         SettingsStore.init(this)
         HomeStore.init(this)
+        PauseStore.init(this)
         EndcMonitor.start(this)
         // Heimatbasis neu anmelden (geht z. B. verloren, wenn der Standort zwischendurch aus war).
         Geofencer.sync(this)
