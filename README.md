@@ -12,13 +12,27 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 - Timing Advance mit Entfernung (4G: 78 m pro Schritt, 2G: 554 m)
 - Dual-SIM: beide SIMs werden gescannt, wenn „Telefon“ erlaubt ist
 
-**Aufzeichnung** – Start im Live-Tab. Ein Hintergrunddienst nimmt bei GPS-Positionen einen Scan auf, auch bei ausgeschaltetem Bildschirm. Eine Benachrichtigung zeigt den Fortschritt und hat einen Stopp-Knopf.
+**Aufzeichnung** – Start im Live-Tab. Ein Hintergrunddienst scannt auch bei ausgeschaltetem Bildschirm; die Benachrichtigung zeigt den Zustand und hat einen Stopp-Knopf. Ortung über den Google-Standortdienst (schneller Fix, Rückfall auf WLAN/Mobilfunk), ohne Google-Dienste über GPS und Netzwerk parallel.
+- *In Bewegung* (GPS ≤ 30 m): Scan mit Messpunkt nach Intervall und Mindestabstand. Bewegung zählt erst, wenn sie größer ist als die GPS-Ungenauigkeit, damit Zittern im Stand keine Messpunkte erzeugt.
+- *Stillstand*: einmal pro Minute nur die Zellen auffrischen.
+- *Kein genaues GPS* (Zug, Tunnel): Zellen werden im normalen Takt weiter erfasst; die groben Messpunkte fließen nicht in die Standortschätzung ein.
 
 **Einstellungen** (Zahnrad im Live-Tab) – Energiemodus *Genau* (alle 3 s), *Ausgewogen* (alle 10 s ab 15 m Bewegung, Standard) oder *Sparsam* (alle 30 s ab 50 m, Modem-Zwischenspeicher), oder einzeln: Scan-Intervall, Mindestabstand, Live-Takt, frische Messung an/aus. GPS wird nur so oft abgefragt, wie gescannt wird.
+
+**Telefonate & Datenverkehr** (Einstellungen) – Zell-Scans bitten das Modem um zusätzliche Messungen, was während eines Gesprächs oder großer Downloads auf manchen Geräten stören kann. Funkstrecke erkennt Telefonate (auch VoLTE und WLAN-Call) über den Audio-Modus und starken mobilen Datenverkehr (ab etwa 256 kbit/s) über die Datenzähler. Je Fall einstellbar: *pausieren*, *nur mitlesen* (keine Messanforderung an das Modem) oder *weiter scannen*. Standard: Telefonat → pausieren, Datenverkehr → nur mitlesen (aktive Datenverbindungen liefern Timing Advance).
+
+**Heimatbasis** (Einstellungen → Heimatbasis) – Ort per langem Druck auf die Karte oder aktuelle Position, Radius 100 m–2 km. Verlässt du den Kreis, startet die Aufzeichnung automatisch, bei Rückkehr stoppt sie (abschaltbar). Nutzt Geofencing der Google-Play-Dienste und braucht „Standort: Immer zulassen“. Android meldet das Verlassen meist mit 1–3 Minuten Verzögerung. Nach einem Neustart wird die Heimatbasis automatisch neu angemeldet.
 
 **Stationen** – alle jemals gehörten Zellen, gruppiert nach Basisstation (4G: eNodeB mit seinen Sektoren), mit Filter nach Betreiber und Technik und Suche nach eNB, Cell-ID, PCI, TAC.
 
 **PCI-Gruppen** – PCI = 3 · SSS-Gruppe + PSS-Index. Weil Sektoren eines Standorts meist dieselbe SSS-Gruppe nutzen, ordnet die App Nachbarzellen ohne Cell-ID einer bekannten Station mit gleicher Gruppe zu („vermutlich zugehörig“), geprüft über den Abstand der Messorte (≤ 3 km, „wahrscheinlich“ ≤ 1,5 km). Lose Zellen gleicher Gruppe an nahen Orten werden zu „vermuteten Stationen“ gebündelt. Im Live-Tab steht bei Nachbarzellen, wenn sie dieselbe Gruppe wie die verbundene Zelle haben.
+
+**5G NSA (EN-DC)** – erkennt, ob die verbundene LTE-Zelle als Anker für 5G NSA dient. Quellen: Anzeige-Status (ab Android 11), Registrierungsstatus (NR-Zustand, `isEnDcAvailable`, `isNrAvailable`, `isDcNrRestricted`; aus dem ServiceState-Text gelesen, da Android diese Felder nicht öffentlich anbietet) und die Messwerte des NR-Zweigs (SS-RSRP/RSRQ/SINR). Zustände: kein 5G, gesperrt, verfügbar, verbunden, 5G SA.
+- Live-Tab: EN-DC-Karte mit LTE-Anker, NR-Zustand und NR-Zweig (Band, PCI, ARFCN, Pegel)
+- Stationen: Merkmal „5G-Anker“, EN-DC-Zähler je Sektor, NR-Zweige der Station
+- Karte → Abdeckung → „5G NSA (EN-DC)“: bester 5G-Zustand je ~50-m-Feld
+- Export: EN-DC je Messpunkt und Zähler je Zelle
+Braucht die Freigabe „Telefon“. Die genaue Trägerkonfiguration (Physical Channel Config) ist nur System-Apps zugänglich.
 
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt
@@ -29,7 +43,9 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 
 In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Straßen bei etwa 20 m, mit Timing Advance bei etwa 5 m. In echter Umgebung verfälschen Gebäude und Antennendiagramme die Pegel, rechne eher mit 50–200 m. Die Schätzung ist ein Suchgebiet.
 
-**Karte** – alle verorteten Stationen in Betreiberfarbe mit Unsicherheitskreis (OpenStreetMap).
+**Karte** – Umschalter *Stationen / Abdeckung*.
+- *Stationen*: alle verorteten Stationen in Betreiberfarbe mit Unsicherheitskreis (OpenStreetMap).
+- *Abdeckung*: Abdeckungskarte je Betreiber. Genaue Messpunkte (≤ 30 m) werden auf Felder von etwa 50 × 50 m zusammengefasst; jedes Feld zeigt das beste gemessene Signal aller Zellen des Betreibers (grün = sehr gut bis rot = sehr schwach). Filter nach Technik oder „Beste Technik“, Legende mit Anteil der Felder je Stufe. Andere Betreiber erscheinen nur mit einer zweiten SIM.
 
 **Export** – Zellen und vollständiges Messprotokoll als CSV (Semikolon, Dezimalkomma, öffnet direkt in Excel).
 
