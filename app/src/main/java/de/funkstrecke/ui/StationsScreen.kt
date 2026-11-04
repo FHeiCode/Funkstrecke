@@ -69,11 +69,23 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 
     val operators = remember(stations) { stations.map { it.operatorName ?: UNKNOWN_OPERATOR }.distinct().sorted() }
     val rats = remember(stations) { stations.map { it.rat }.distinct().sorted() }
-    val shown = remember(stations, query, operatorFilter, ratFilter) {
-        val q = query.trim().lowercase()
+    // Betreiber-/Technikfilter gelten auch für das OpenCelliD-Histogramm.
+    val filtered = remember(stations, operatorFilter, ratFilter) {
         stations.filter { s ->
             (operatorFilter == null || (s.operatorName ?: UNKNOWN_OPERATOR) == operatorFilter) &&
-                (ratFilter == null || s.rat == ratFilter) &&
+                (ratFilter == null || s.rat == ratFilter)
+        }
+    }
+    val deviations = remember(filtered) { ocidDeviations(filtered) }
+    val ocidNotFound = remember(filtered) { filtered.sumOf { s -> s.ocid.count { it.status == de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND } } }
+    var ocidBin by rememberSaveable { mutableStateOf<Int?>(null) }
+    val binStations = remember(deviations, ocidBin) {
+        ocidBin?.let { b -> deviations.filter { ocidBinOf(it.distanceM) == b }.map { it.stationKey }.toSet() }
+    }
+    val shown = remember(filtered, query, binStations) {
+        val q = query.trim().lowercase()
+        filtered.filter { s ->
+            (binStations == null || s.key in binStations) &&
                 (
                     q.isEmpty() || s.title.lowercase().contains(q) ||
                         (s.plmn ?: "").contains(q) ||
@@ -179,6 +191,11 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             label = { Text(rat) },
                         )
                     }
+                }
+            }
+            if (deviations.isNotEmpty() || ocidNotFound > 0) {
+                item(key = "ocid-histogram") {
+                    OcidHistogramCard(deviations, ocidNotFound, ocidBin, onSelectBin = { ocidBin = it })
                 }
             }
             ocidProgress?.let { p ->
