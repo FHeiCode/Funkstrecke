@@ -52,6 +52,8 @@ data class CellRecord(
     /** RS-SNR (4G) bzw. SS-SINR (5G) in dB */
     val sinr: Int?,
     val timingAdvance: Int?,
+    /** Messzeitpunkt laut Modem (SystemClock.elapsedRealtime in ms), falls gemeldet */
+    val measuredAtMs: Long? = null,
 ) {
     val operatorName: String? get() = Operators.name(mcc, mnc)
     val plmn: String? get() = if (mcc != null && mnc != null) "$mcc-$mnc" else null
@@ -171,15 +173,23 @@ object CellScanner {
         }
 
     private fun map(info: CellInfo): CellRecord? {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            mapNr(info)?.let { return it }
+        val record = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && info is CellInfoNr) {
+            mapNr(info)
+        } else {
+            when (info) {
+                is CellInfoLte -> mapLte(info)
+                is CellInfoGsm -> mapGsm(info)
+                is CellInfoWcdma -> mapWcdma(info)
+                else -> null
+            }
         }
-        return when (info) {
-            is CellInfoLte -> mapLte(info)
-            is CellInfoGsm -> mapGsm(info)
-            is CellInfoWcdma -> mapWcdma(info)
-            else -> null
-        }
+        return record?.copy(measuredAtMs = timestampOf(info))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun timestampOf(info: CellInfo): Long? {
+        val ms = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) info.timestampMillis else info.timeStamp / 1_000_000
+        return ms.takeIf { it > 0 }
     }
 
     @Suppress("DEPRECATION")

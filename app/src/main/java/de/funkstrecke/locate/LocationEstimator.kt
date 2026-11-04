@@ -44,14 +44,31 @@ object LocationEstimator {
     private const val SIGMA_TA_GSM = 550.0
     private const val MIN_DISTANCE = 15.0
     private const val BIN_SIZE = 20.0
-    private const val MAX_GPS_ERROR = 30f
+    /**
+     * Messpunkte bis zu dieser GPS-Ungenauigkeit gehen ein (Zug, Stadt). Ungenaue Punkte werden
+     * nicht verworfen, sondern schwächer gewichtet: Ihr Positionsfehler wird in einen Pegelfehler
+     * umgerechnet, der mit dem Abstand zum Mast kleiner wird.
+     */
+    const val MAX_GPS_ERROR = 100f
+    /** Für Punkte ohne Genauigkeitsangabe angenommen */
+    private const val DEFAULT_ACCURACY_M = 30.0
+    /** dB pro relativem Abstandsfehler: 10 · n / ln 10 */
+    private const val DB_PER_RELATIVE_DISTANCE = 10 * 3.0 / 2.302585
     private const val MIN_RADIUS = 50.0
     /** Zuschlag für Modellfehler (Gebäude, Antennendiagramm) */
     private const val RADIUS_FACTOR = 1.5
     /** Lösungen innerhalb dieses χ²-Abstands gelten als gleich gut (≈ 2 σ) */
     private const val AMBIGUITY_CHI2 = 4.0
 
-    private class Obs(val x: Double, val y: Double, val cell: Int, val rss: Double, val taDistance: Double?)
+    private class Obs(
+        val x: Double,
+        val y: Double,
+        val cell: Int,
+        val rss: Double,
+        val taDistance: Double?,
+        /** Mittlere GPS-Ungenauigkeit der Messpunkte in diesem Rasterfeld */
+        val accuracy: Double,
+    )
 
     private class Solution(val x: Double, val y: Double, val cost: Double, val radius: Double)
 
@@ -79,6 +96,7 @@ object LocationEstimator {
                     cell = cellIndex.getValue(k.first),
                     rss = list.map { it.dbm!!.toDouble() }.average(),
                     taDistance = if (tas.isEmpty()) null else timingDistance(rat, tas[tas.size / 2]),
+                    accuracy = list.map { it.accuracyM?.toDouble() ?: DEFAULT_ACCURACY_M }.average(),
                 )
             }
         val spots = obs.map { floor(it.x / BIN_SIZE) to floor(it.y / BIN_SIZE) }.distinct().size
@@ -160,13 +178,16 @@ object LocationEstimator {
                 val dy = q[1] - o.y
                 val d = max(hypot(dx, dy), MIN_DISTANCE)
                 val predicted = q[2 + o.cell] - 10 * PATH_LOSS_EXPONENT * log10(d)
-                r[i] = (o.rss - predicted) / SIGMA_DB
+                // Positionsfehler als zusätzlicher Pegelfehler: nah am Mast groß, weit weg klein.
+                val positionDb = DB_PER_RELATIVE_DISTANCE * o.accuracy / d
+                val sigma = sqrt(SIGMA_DB * SIGMA_DB + positionDb * positionDb)
+                r[i] = (o.rss - predicted) / sigma
                 if (jac != null) {
                     jac[i].fill(0.0)
-                    val g = 10 * PATH_LOSS_EXPONENT / (ln(10.0) * d * d * SIGMA_DB)
+                    val g = 10 * PATH_LOSS_EXPONENT / (ln(10.0) * d * d * sigma)
                     jac[i][0] = g * dx
                     jac[i][1] = g * dy
-                    jac[i][2 + o.cell] = -1.0 / SIGMA_DB
+                    jac[i][2 + o.cell] = -1.0 / sigma
                 }
                 i++
             }
@@ -174,11 +195,12 @@ object LocationEstimator {
                 val dx = q[0] - o.x
                 val dy = q[1] - o.y
                 val d = max(hypot(dx, dy), 1.0)
-                r[i] = (d - o.taDistance!!) / taSigma
+                val sigma = sqrt(taSigma * taSigma + o.accuracy * o.accuracy)
+                r[i] = (d - o.taDistance!!) / sigma
                 if (jac != null) {
                     jac[i].fill(0.0)
-                    jac[i][0] = dx / (d * taSigma)
-                    jac[i][1] = dy / (d * taSigma)
+                    jac[i][0] = dx / (d * sigma)
+                    jac[i][1] = dy / (d * sigma)
                 }
                 i++
             }

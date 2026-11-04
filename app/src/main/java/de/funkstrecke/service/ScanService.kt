@@ -52,7 +52,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import android.os.SystemClock
+import de.funkstrecke.radio.CellRecord
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.max
+import kotlin.math.sin
 import kotlin.math.roundToInt
 
 /** In welcher Lage sich die Aufzeichnung gerade befindet. */
@@ -327,7 +332,8 @@ class ScanService : Service() {
             val cells = CellScanner.scan(this@ScanService, forceRefresh)
             val endc = EndcMonitor.snapshot(this@ScanService, cells)
             _lastScan.value = LiveScan(cells, now, endc)
-            Recorder.record(AppDatabase.get(this@ScanService), cells, if (withMeasurement) location else null, now, endc)
+            val position = if (withMeasurement) positionAtMeasurement(location, cells) else null
+            Recorder.record(AppDatabase.get(this@ScanService), cells, position, now, endc)
             val measured = if (withMeasurement) cells.count { it.dbm != null } else 0
             _state.update {
                 it.copy(
@@ -338,6 +344,36 @@ class ScanService : Service() {
             }
             refreshNotification(cells.size)
         }
+    }
+
+    /**
+     * Rechnet die Position mit Geschwindigkeit und Fahrtrichtung auf den Zeitpunkt der Zellmessung um.
+     * Zwischen GPS-Fix und Messung liegen oft 1–6 s; bei 200 km/h sind das bis zu 300 m.
+     */
+    private fun positionAtMeasurement(fix: Location, cells: List<CellRecord>): Location {
+        if (!fix.hasSpeed() || fix.speed < MIN_EXTRAPOLATION_SPEED) return fix
+        val fixAt = fix.elapsedRealtimeNanos / 1_000_000
+        val nowElapsed = SystemClock.elapsedRealtime()
+        // Zeitstempel der verbundenen Zelle bevorzugen; unplausible Werte durch das Scan-Ende ersetzen.
+        val stamps = (cells.filter { it.registered }.mapNotNull { it.measuredAtMs }.ifEmpty { cells.mapNotNull { it.measuredAtMs } })
+            .filter { it in (fixAt - 15_000)..(nowElapsed + 1_000) }
+            .sorted()
+        val cellAt = stamps.getOrNull(stamps.size / 2) ?: nowElapsed
+        val dt = ((cellAt - fixAt) / 1000.0).coerceIn(-MAX_EXTRAPOLATION_S, MAX_EXTRAPOLATION_S)
+        if (abs(dt) < 0.3) return fix
+        val distance = fix.speed * dt
+        val out = Location(fix)
+        if (fix.hasBearing()) {
+            val bearing = Math.toRadians(fix.bearing.toDouble())
+            out.latitude = fix.latitude + distance * cos(bearing) / 110_540.0
+            out.longitude = fix.longitude + distance * sin(bearing) / (111_320.0 * cos(Math.toRadians(fix.latitude)))
+            // Unsicherheit von Geschwindigkeit und Richtung: etwa 10 % der hochgerechneten Strecke.
+            out.accuracy = fix.accuracy + abs(distance).toFloat() * 0.1f
+        } else {
+            // Ohne Fahrtrichtung bleibt der Ort, die Ungenauigkeit wächst um die gefahrene Strecke.
+            out.accuracy = fix.accuracy + abs(distance).toFloat()
+        }
+        return out
     }
 
     private var lastCellCount = 0
@@ -352,7 +388,7 @@ class ScanService : Service() {
             RecordPhase.WAITING -> "Warte auf erste Position"
             RecordPhase.MOVING -> "In Bewegung · GPS $acc"
             RecordPhase.STATIONARY -> "Stillstand${if (minutes > 0) " seit $minutes min" else ""} · Zellen jede Minute"
-            RecordPhase.COARSE -> "Kein genaues GPS${if (minutes > 0) " seit $minutes min" else ""} ($acc) · Zellen werden weiter erfasst"
+            RecordPhase.COARSE -> "Ungenaues GPS${if (minutes > 0) " seit $minutes min" else ""} ($acc) · Zellen werden weiter erfasst"
             RecordPhase.PAUSED -> "Pausiert ${PauseStore.describe(PauseStore.pausedUntil.value)} · GPS aus"
         }
         val reason = when (s.busy) {
@@ -440,8 +476,12 @@ class ScanService : Service() {
         private const val ACTION_RESUME = "de.funkstrecke.RESUME"
         private const val EXTRA_MINUTES = "minutes"
 
-        /** Ab dieser Genauigkeit zählt eine Position als genau (wie in der Standortschätzung). */
+        /** Ab dieser Genauigkeit zählt eine Position als genau (Unterscheidung Bewegung/Stillstand). */
         const val PRECISE_ACCURACY_M = 30f
+
+        /** Unterhalb dieser Geschwindigkeit (m/s ≈ 11 km/h) lohnt keine Hochrechnung */
+        private const val MIN_EXTRAPOLATION_SPEED = 3f
+        private const val MAX_EXTRAPOLATION_S = 10.0
 
         /** Grobe Messpunkte bis zu dieser Genauigkeit speichern (für das Protokoll; die Schätzung nutzt sie nicht). */
         private const val COARSE_STORE_ACCURACY_M = 500f

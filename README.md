@@ -15,7 +15,8 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 **Aufzeichnung** – Start im Live-Tab. Ein Hintergrunddienst scannt auch bei ausgeschaltetem Bildschirm; die Benachrichtigung zeigt den Zustand und hat einen Stopp-Knopf. Ortung über den Google-Standortdienst (schneller Fix, Rückfall auf WLAN/Mobilfunk), ohne Google-Dienste über GPS und Netzwerk parallel.
 - *In Bewegung* (GPS ≤ 30 m): Scan mit Messpunkt nach Intervall und Mindestabstand. Bewegung zählt erst, wenn sie größer ist als die GPS-Ungenauigkeit, damit Zittern im Stand keine Messpunkte erzeugt.
 - *Stillstand*: einmal pro Minute nur die Zellen auffrischen.
-- *Kein genaues GPS* (Zug, Tunnel): Zellen werden im normalen Takt weiter erfasst; die groben Messpunkte fließen nicht in die Standortschätzung ein.
+- *Ungenaues GPS* (Zug, Tunnel): Zellen werden im normalen Takt weiter erfasst. Messpunkte bis 100 m Ungenauigkeit zählen für Schätzung und Abdeckung, aber schwächer gewichtet: Der Positionsfehler wird in einen Pegelfehler umgerechnet, der mit dem Abstand zum Mast kleiner wird (80 m Fehler sind bei einem 3 km entfernten Mast fast bedeutungslos).
+- *Hohe Geschwindigkeit*: Die Position wird mit Geschwindigkeit und Fahrtrichtung auf den Zeitstempel der Zellmessung hochgerechnet (zwischen Fix und Messung liegen oft 1–6 s, bei 200 km/h bis zu 300 m).
 
 **Pause** – Im Live-Tab „Pausieren …“ (bzw. „Automatik pausieren …“ bei aktiver Heimatbasis): 15 min, 30 min, 1 h, 2 h oder bis zum Fortsetzen. Während der Pause sind GPS und Zell-Scans aus, die Live-Ansicht ruht und die Heimatbasis startet keine Aufzeichnung. Danach geht es von selbst weiter. In der Benachrichtigung gibt es „Pause 30 min“ und „Fortsetzen“.
 

@@ -64,6 +64,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import de.funkstrecke.data.pciGroup
 import de.funkstrecke.data.pciPss
 import de.funkstrecke.data.supportsPciGroups
+import de.funkstrecke.locate.LocationEstimator
 import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.ui.theme.signalColor
 import de.funkstrecke.radio.EndcMode
@@ -508,8 +509,12 @@ private fun PhaseLine(log: LogState) {
         RecordPhase.STATIONARY -> "Stillstand seit $since · GPS $acc" to
             "Zellen werden jede Minute aufgefrischt. Neue Messpunkte gibt es erst wieder nach Bewegung."
         RecordPhase.PAUSED -> "Pausiert" to "GPS und Zell-Scans sind aus."
-        RecordPhase.COARSE -> "Kein genaues GPS seit $since · $acc" to
-            "Zellen werden weiter erfasst. Messpunkte mit dieser Genauigkeit fließen nicht in die Standortschätzung ein."
+        RecordPhase.COARSE -> "Ungenaues GPS seit $since · $acc" to
+            if ((log.lastAccuracyM ?: Float.MAX_VALUE) <= LocationEstimator.MAX_GPS_ERROR) {
+                "Zellen werden erfasst. Die Messpunkte zählen für Schätzung und Abdeckung, aber schwächer gewichtet."
+            } else {
+                "Zellen werden erfasst. Messpunkte ungenauer als ${LocationEstimator.MAX_GPS_ERROR.toInt()} m fließen nicht in Schätzung und Abdeckung ein."
+            }
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(title, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)

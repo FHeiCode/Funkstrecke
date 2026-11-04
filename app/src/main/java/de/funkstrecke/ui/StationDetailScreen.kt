@@ -49,7 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CellEntity
 import de.funkstrecke.data.LinkConfidence
-import de.funkstrecke.service.ScanService
+import de.funkstrecke.locate.LocationEstimator
 import de.funkstrecke.data.MeasurementEntity
 import de.funkstrecke.data.pciGroup
 import de.funkstrecke.data.pciPss
@@ -252,7 +252,7 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
     val dots = remember(measurements, e) {
         // Ein Punkt je ~20-m-Raster, stärkster Pegel zählt.
         val spots = measurements
-            .filter { it.dbm != null && (it.accuracyM ?: Float.MAX_VALUE) <= ScanService.PRECISE_ACCURACY_M }
+            .filter { it.dbm != null && (it.accuracyM ?: Float.MAX_VALUE) <= LocationEstimator.MAX_GPS_ERROR }
             .groupBy { floor(it.latitude / 0.00018) to floor(it.longitude / 0.00028) }
             .map { (_, list) -> list.maxBy { it.dbm!! } }
         spots.map { m ->

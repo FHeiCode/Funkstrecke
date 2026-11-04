@@ -125,7 +125,7 @@ interface CellDao {
     /** Mittelpunkt der Messorte je Zelle, für die Zuordnung über die PCI-Gruppe */
     @Query(
         "SELECT cellKey, AVG(latitude) AS latitude, AVG(longitude) AS longitude, COUNT(*) AS n " +
-            "FROM measurements WHERE accuracyM IS NULL OR accuracyM <= 50 GROUP BY cellKey",
+            "FROM measurements WHERE accuracyM IS NULL OR accuracyM <= 100 GROUP BY cellKey",
     )
     fun observeCentroids(): Flow<List<CellCentroid>>
 
@@ -139,7 +139,7 @@ interface CellDao {
             "CAST(m.longitude / 0.0007 AS INTEGER) AS lonIdx, " +
             "MAX(m.dbm) AS bestDbm, AVG(m.dbm) AS avgDbm, COUNT(*) AS n, MAX(m.time) AS lastTime " +
             "FROM measurements m JOIN cells c ON c.id = m.cellKey " +
-            "WHERE m.dbm IS NOT NULL AND m.accuracyM IS NOT NULL AND m.accuracyM <= 30 " +
+            "WHERE m.dbm IS NOT NULL AND m.accuracyM IS NOT NULL AND m.accuracyM <= 100 " +
             "GROUP BY c.mcc, c.mnc, c.rat, latIdx, lonIdx",
     )
     fun observeCoverage(): Flow<List<CoverageTile>>
@@ -152,7 +152,7 @@ interface CellDao {
             "MAX(CASE m.endc WHEN 'SA' THEN 4 WHEN 'CONNECTED' THEN 3 WHEN 'AVAILABLE' THEN 2 " +
             "WHEN 'RESTRICTED' THEN 1 ELSE 0 END) AS endcRank, COUNT(*) AS n " +
             "FROM measurements m JOIN cells c ON c.id = m.cellKey " +
-            "WHERE m.serving = 1 AND m.endc IS NOT NULL AND m.accuracyM IS NOT NULL AND m.accuracyM <= 30 " +
+            "WHERE m.serving = 1 AND m.endc IS NOT NULL AND m.accuracyM IS NOT NULL AND m.accuracyM <= 100 " +
             "GROUP BY c.mcc, c.mnc, latIdx, lonIdx",
     )
     fun observeEndcCoverage(): Flow<List<EndcTile>>
