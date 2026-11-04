@@ -62,11 +62,24 @@ jobs:
           name: funkstrecke-apk
           path: ${{ env.APK_NAME }}
 
-      # Nur bei einem veröffentlichten Release: APK an das Release anhängen
+      # Tag „v…“ gepusht: Titel und Text des Releases aus der Tag-Beschreibung (git tag -a) übernehmen.
+      - name: Release-Text aus dem Tag lesen
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          SUBJECT=$(git tag -l --format='%(contents:subject)' "$GITHUB_REF_NAME")
+          git tag -l --format='%(contents:body)' "$GITHUB_REF_NAME" > release-notes.md
+          echo "RELEASE_TITLE=${SUBJECT:-$GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+
+      # Release veröffentlichen bzw. APK anhängen:
+      # - Release auf GitHub veröffentlicht: APK an dieses Release hängen
+      # - Tag „v…“ gepusht: Release anlegen (falls noch nicht vorhanden) und APK anhängen
       - name: APK an Release anhängen
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
         uses: softprops/action-gh-release@v3
         with:
+          name: ${{ github.event_name == 'push' && env.RELEASE_TITLE || '' }}
+          body_path: ${{ github.event_name == 'push' && 'release-notes.md' || '' }}
           files: |
             ${{ env.APK_NAME }}
             funkstrecke.apk

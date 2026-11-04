@@ -70,6 +70,7 @@ In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Str
 1. Inhalt dieses Ordners in ein GitHub-Repository pushen.
 2. Der Workflow `.github/workflows/android.yml` baut bei jedem Push automatisch.
 3. Unter **Actions → letzter Lauf → Artifacts** liegt `funkstrecke-apk` (ZIP mit der APK).
+   Release per Tag: `git tag -a v2.7.0 -m "Titel" -m "Beschreibung"` und `git push origin v2.7.0` – der Workflow baut, legt das Release mit Titel und Text aus dem Tag an und hängt die APKs an.
    Für einen Download unter **Releases**: auf GitHub **Releases → Draft a new release**, Tag z. B. `v2.0` anlegen, **Publish release**. Der Workflow baut dann und hängt `funkstrecke-v2.0.apk` nach 3–5 Minuten an das Release.
    Direkter Download der neuesten Version (z. B. in Chrome auf dem Handy): https://github.com/FHeiCode/funkstrecke/releases/latest/download/funkstrecke.apk
 4. APK aufs Handy kopieren und installieren. Play Protect warnt bei Apps außerhalb des Play Stores, besonders wenn sie Standort und Telefonstatus nutzen: „Weitere Details → Trotzdem installieren“.
