@@ -226,7 +226,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
                     .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
-                    .fallbackToDestructiveMigrationFrom(1)
+                    .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()
                     .also { instance = it }
             }
