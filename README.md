@@ -68,6 +68,7 @@ In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Str
 2. Der Workflow `.github/workflows/android.yml` baut bei jedem Push automatisch.
 3. Unter **Actions → letzter Lauf → Artifacts** liegt `funkstrecke-apk` (ZIP mit der APK).
    Für einen Download unter **Releases**: auf GitHub **Releases → Draft a new release**, Tag z. B. `v2.0` anlegen, **Publish release**. Der Workflow baut dann und hängt `funkstrecke-v2.0.apk` nach 3–5 Minuten an das Release.
+   Direkter Download der neuesten Version (z. B. in Chrome auf dem Handy): https://github.com/FHeiCode/funkstrecke/releases/latest/download/funkstrecke.apk
 4. APK aufs Handy kopieren und installieren. Play Protect warnt bei Apps außerhalb des Play Stores, besonders wenn sie Standort und Telefonstatus nutzen: „Weitere Details → Trotzdem installieren“.
 
 Das Projekt enthält bewusst keine `gradlew`/`gradle-wrapper.jar` (ausführbare Dateien in ZIPs lösen manche Virenscanner aus). Für Android Studio einmal `gradle wrapper --gradle-version 8.11.1` im Projektordner ausführen oder das Projekt mit einer installierten Gradle-Version öffnen.
