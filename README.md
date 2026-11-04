@@ -48,7 +48,8 @@ Braucht die Freigabe „Telefon“. Die genaue Trägerkonfiguration (Physical Ch
 
 In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Straßen bei etwa 20 m, mit Timing Advance bei etwa 5 m. In echter Umgebung verfälschen Gebäude und Antennendiagramme die Pegel, rechne eher mit 50–200 m. Die Schätzung ist ein Suchgebiet.
 
-**Karte** – Umschalter *Stationen / Abdeckung*.
+**Karte** – Umschalter *Stationen / Abdeckung / TA-Grenzen*.
+- *TA-Grenzen*: Tracking Areas (TAC, bei 2G/3G Location Areas mit LAC) je Betreiber und Technik. Jedes ~50-m-Feld erhält die TAC der verbundenen Zelle, die dort am häufigsten gemessen wurde (eigene Farbe je TAC). Linien zeigen Grenzen zwischen gemessenen Nachbarfeldern; dunkle Marker die Stellen, an denen das Handy unterwegs die TAC gewechselt hat (Tracking Area Update) – mit Uhrzeit und Genauigkeit der Grenzlage.
 - *Stationen*: alle verorteten Stationen in Betreiberfarbe mit Unsicherheitskreis (OpenStreetMap).
 - *Abdeckung*: Abdeckungskarte je Betreiber. Genaue Messpunkte (≤ 30 m) werden auf Felder von etwa 50 × 50 m zusammengefasst; jedes Feld zeigt das beste gemessene Signal aller Zellen des Betreibers (grün = sehr gut bis rot = sehr schwach). Filter nach Technik oder „Beste Technik“, Legende mit Anteil der Felder je Stufe. Andere Betreiber erscheinen nur mit einer zweiten SIM.
 

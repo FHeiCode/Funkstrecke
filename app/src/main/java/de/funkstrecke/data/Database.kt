@@ -144,6 +144,16 @@ interface CellDao {
     )
     fun observeCoverage(): Flow<List<CoverageTile>>
 
+    /** Messpunkte der verbundenen Zelle mit TAC/LAC, zeitlich sortiert (für die Tracking-Area-Karte). */
+    @Query(
+        "SELECT m.time AS time, m.latitude AS latitude, m.longitude AS longitude, m.accuracyM AS accuracyM, " +
+            "c.area AS area, c.rat AS rat, c.mcc AS mcc, c.mnc AS mnc " +
+            "FROM measurements m JOIN cells c ON c.id = m.cellKey " +
+            "WHERE m.serving = 1 AND c.area IS NOT NULL AND m.accuracyM IS NOT NULL AND m.accuracyM <= 100 " +
+            "ORDER BY m.time",
+    )
+    suspend fun servingTaPoints(): List<TaPoint>
+
     /** 5G-NSA-Abdeckung: bester EN-DC-Zustand je ~50-m-Feld und Betreiber der verbundenen Zelle. */
     @Query(
         "SELECT c.mcc AS mcc, c.mnc AS mnc, " +

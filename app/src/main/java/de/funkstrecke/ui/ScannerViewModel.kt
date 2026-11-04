@@ -7,6 +7,9 @@ import de.funkstrecke.data.AppDatabase
 import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CoverageTile
 import de.funkstrecke.data.EndcTile
+import de.funkstrecke.data.TaKey
+import de.funkstrecke.data.TrackingAreaMap
+import de.funkstrecke.data.buildTrackingAreas
 import de.funkstrecke.data.MeasurementEntity
 import de.funkstrecke.data.Recorder
 import de.funkstrecke.data.buildStations
@@ -69,6 +72,23 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     val endcCoverage: StateFlow<List<EndcTile>> = dao.observeEndcCoverage()
         .conflate()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _trackingAreas = MutableStateFlow<Map<TaKey, TrackingAreaMap>>(emptyMap())
+    val trackingAreas: StateFlow<Map<TaKey, TrackingAreaMap>> = _trackingAreas.asStateFlow()
+    private var taJob: kotlinx.coroutines.Job? = null
+    private var taLoadedAt = 0L
+
+    /** Tracking-Area-Karte neu berechnen; während der Aufzeichnung höchstens alle 20 s. */
+    fun loadTrackingAreas(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (taJob?.isActive == true) return
+        if (!force && now - taLoadedAt < 20_000) return
+        taLoadedAt = now
+        taJob = viewModelScope.launch {
+            val points = dao.servingTaPoints()
+            _trackingAreas.value = withContext(Dispatchers.Default) { buildTrackingAreas(points) }
+        }
+    }
 
     val measurementCount: StateFlow<Int> = dao.observeMeasurementCount()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)

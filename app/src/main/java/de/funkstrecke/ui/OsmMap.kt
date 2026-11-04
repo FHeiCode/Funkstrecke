@@ -51,6 +51,9 @@ data class MapDot(
     val onClick: (() -> Unit)? = null,
 )
 
+/** Eine Linie auf der Karte (z. B. Grenze einer Tracking Area), Farbe als ARGB, Breite in dp. */
+data class CoverageLine(val lat1: Double, val lon1: Double, val lat2: Double, val lon2: Double, val argb: Int, val widthDp: Float)
+
 /** Ein farbiges Rechteck der Abdeckungskarte (Farbe als ARGB). */
 data class CoverageRect(val south: Double, val west: Double, val north: Double, val east: Double, val argb: Int)
 
@@ -61,7 +64,19 @@ data class CoverageRect(val south: Double, val west: Double, val north: Double, 
 private class CoverageOverlay : Overlay() {
     @Volatile
     var rects: List<CoverageRect> = emptyList()
+
+    @Volatile
+    var lines: List<CoverageLine> = emptyList()
+    var density = 1f
     private val paint = Paint().apply { style = Paint.Style.FILL }
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+    }
+    private val a = android.graphics.Point()
+    private val b = android.graphics.Point()
+    private val p1 = GeoPoint(0.0, 0.0)
+    private val p2 = GeoPoint(0.0, 0.0)
     private val topLeft = android.graphics.Point()
     private val bottomRight = android.graphics.Point()
     private val nw = GeoPoint(0.0, 0.0)
@@ -84,6 +99,22 @@ private class CoverageOverlay : Overlay() {
             val right = maxOf(bottomRight.x, topLeft.x + 2)
             val bottom = maxOf(bottomRight.y, topLeft.y + 2)
             canvas.drawRect(topLeft.x.toFloat(), topLeft.y.toFloat(), right.toFloat(), bottom.toFloat(), paint)
+        }
+        for (l in lines) {
+            if (maxOf(l.lat1, l.lat2) < view.latSouth || minOf(l.lat1, l.lat2) > view.latNorth ||
+                maxOf(l.lon1, l.lon2) < view.lonWest || minOf(l.lon1, l.lon2) > view.lonEast
+            ) {
+                continue
+            }
+            p1.latitude = l.lat1
+            p1.longitude = l.lon1
+            p2.latitude = l.lat2
+            p2.longitude = l.lon2
+            projection.toPixels(p1, a)
+            projection.toPixels(p2, b)
+            linePaint.color = l.argb
+            linePaint.strokeWidth = l.widthDp * density
+            canvas.drawLine(a.x.toFloat(), a.y.toFloat(), b.x.toFloat(), b.y.toFloat(), linePaint)
         }
     }
 }
@@ -168,6 +199,8 @@ fun OsmMap(
     onLongPress: ((latitude: Double, longitude: Double) -> Unit)? = null,
     /** Farbige Felder der Abdeckungskarte, unter allen anderen Ebenen */
     coverage: List<CoverageRect> = emptyList(),
+    /** Linien über den Feldern, z. B. Grenzen von Tracking Areas */
+    lines: List<CoverageLine> = emptyList(),
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -221,7 +254,12 @@ fun OsmMap(
         }
     }
 
-    val coverageOverlay = remember { CoverageOverlay().also { mapView.overlays.add(0, it) } }
+    val coverageOverlay = remember {
+        CoverageOverlay().also {
+            it.density = context.resources.displayMetrics.density
+            mapView.overlays.add(0, it)
+        }
+    }
     val longPress = rememberUpdatedState(onLongPress)
     remember {
         if (onLongPress != null) {
@@ -312,6 +350,7 @@ fun OsmMap(
             }
             map.overlays.addAll(added)
             coverageOverlay.rects = coverage
+            coverageOverlay.lines = lines
             // Eigene Position immer obenauf zeichnen.
             positionOverlay?.let {
                 map.overlays.remove(it)
