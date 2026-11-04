@@ -24,11 +24,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -192,6 +196,33 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                         onCheckedChange = { v -> SettingsStore.update { it.copy(forceRefresh = v) } },
                     )
                 }
+            }
+
+            Section("OpenCelliD") {
+                val ocidKey by SettingsStore.openCellIdKey.collectAsStateWithLifecycle()
+                var keyInput by rememberSaveable { mutableStateOf(ocidKey) }
+                Text(
+                    "Gleicht gefundene Zellen mit der offenen Zelldatenbank opencellid.org ab. Dafür brauchst du einen " +
+                        "kostenlosen API-Schlüssel (Konto auf opencellid.org anlegen, Schlüssel unter „My Account“).",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = keyInput,
+                    onValueChange = {
+                        keyInput = it
+                        SettingsStore.setOpenCellIdKey(it)
+                    },
+                    label = { Text("API-Schlüssel") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    "Beim Abgleich werden die Kennungen deiner gefundenen Zellen an OpenCelliD gesendet, keine Positionen. " +
+                        "Ergebnisse gelten 30 Tage; danach wird neu gefragt.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             Section("Wohin der Akku geht") {

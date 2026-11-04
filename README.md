@@ -39,6 +39,8 @@ Braucht die Freigabe „Telefon“. Die genaue Trägerkonfiguration (Physical Ch
 
 **PCI-Konflikte** – Warnung nur, wenn zwei verschiedene Zellen dieselbe PCI auf demselben Träger (also im gleichen Band) nutzen und ihre Standorte höchstens 5 km auseinanderliegen: Dann können Handys sie verwechseln. Gleiche PCIs auf anderen Bändern oder Trägern sind übliche Planung (gleicher Sektor) und erscheinen nur als neutraler Hinweis.
 
+**OpenCelliD-Abgleich** – Mit einem kostenlosen API-Schlüssel von opencellid.org (Einstellungen → OpenCelliD) gleicht die App gefundene Zellen mit vollständiger Kennung (MCC, MNC, TAC/LAC, Cell-ID) ab: Stationsliste → ⋮ → „Mit OpenCelliD abgleichen“ oder einzeln in der Stationsansicht. Ergebnis je Station: „Nicht in OpenCelliD“ (neue oder nicht erfasste Zelle) oder der Abstand zwischen eigener Schätzung und OpenCelliD-Position; die OpenCelliD-Positionen erscheinen lila auf der Stationskarte. Anfragen sind gedrosselt (etwa eine pro Sekunde), Ergebnisse gelten 30 Tage; bei ungültigem Schlüssel oder erreichtem Tageslimit stoppt der Abgleich. Gesendet werden nur Zellkennungen, keine Positionen. Daten: OpenCelliD, CC BY-SA 4.0.
+
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt
 - Timing-Advance-Werte als zusätzliche Abstandsmessungen

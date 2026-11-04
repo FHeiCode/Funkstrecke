@@ -217,6 +217,10 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 }
             }
 
+            Section("OpenCelliD") {
+                OcidSection(station, vm)
+            }
+
             Section(if (station.cells.size == 1) "Zelle" else "Zellen (${station.cells.size})") {
                 CellTable(station.rat, station.cells)
             }
@@ -257,7 +261,16 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
             .map { (_, list) -> list.maxBy { it.dbm!! } }
         spots.map { m ->
             MapDot(m.latitude, m.longitude, signalColorRaw(signalLevel(station.rat, m.dbm)), sizeDp = 9)
-        } + MapDot(e.latitude, e.longitude, color, sizeDp = 18, title = station.title, snippet = "±${formatDistance(e.radiusM)}")
+        } + MapDot(e.latitude, e.longitude, color, sizeDp = 18, title = station.title, snippet = "±${formatDistance(e.radiusM)}") +
+            station.ocid.filter { it.found && it.latitude != null && it.longitude != null }.map { o ->
+                val cell = station.cells.firstOrNull { it.id == o.cellKey }
+                MapDot(
+                    o.latitude!!, o.longitude!!, OcidColor, sizeDp = 13,
+                    title = "OpenCelliD · Sektor ${cell?.sector ?: cell?.cellId ?: "?"}",
+                    snippet = listOfNotNull(o.samples?.let { "$it Messungen" }, o.rangeM?.let { "Reichweite ${formatDistance(it.toDouble())}" })
+                        .joinToString(" · "),
+                )
+            }
     }
     val circles = remember(e) { listOf(MapCircle(e.latitude, e.longitude, e.radiusM, color)) }
     OsmMap(
@@ -494,6 +507,79 @@ private fun EndcSection(station: BaseStation) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+/** Farbe der OpenCelliD-Positionen auf der Karte */
+private val OcidColor = androidx.compose.ui.graphics.Color(0xFF7B3FB0)
+
+/** Vergleich mit OpenCelliD: je Zelle gefunden/unbekannt, Position, Abstand zur eigenen Schätzung. */
+@Composable
+private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
+    val key by de.funkstrecke.util.SettingsStore.openCellIdKey.collectAsStateWithLifecycle()
+    val progress by vm.ocidProgress.collectAsStateWithLifecycle()
+    val lookupable = station.cells.filter { de.funkstrecke.data.OpenCellId.canLookup(it) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        when {
+            lookupable.isEmpty() -> Text(
+                "Diese Station hat keine Zelle mit vollständiger Kennung (MCC, MNC, TAC, Cell-ID). OpenCelliD kann sie nicht nachschlagen.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            station.ocid.isEmpty() -> Text(
+                "Noch nicht abgeglichen.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            else -> {
+                val distance = station.ocidDistanceM
+                Text(
+                    when {
+                        station.ocidUnknown -> "Keine Zelle dieser Station ist in OpenCelliD verzeichnet. Sie ist neu oder wurde dort noch nicht erfasst."
+                        distance != null -> "Die OpenCelliD-Position liegt ${formatDistance(distance)} von deiner Schätzung entfernt."
+                        else -> "In OpenCelliD verzeichnet. Für einen Vergleich fehlt noch deine Standortschätzung."
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                station.ocid.forEach { o ->
+                    val cell = station.cells.firstOrNull { it.id == o.cellKey }
+                    Text(
+                        "Sektor ${cell?.sector ?: cell?.cellId ?: "?"}: " + when (o.status) {
+                            de.funkstrecke.data.OcidEntity.STATUS_FOUND -> listOfNotNull(
+                                formatCoordinates(o.latitude ?: 0.0, o.longitude ?: 0.0),
+                                o.samples?.let { "$it Messungen" },
+                                o.rangeM?.let { "Reichweite ${formatDistance(it.toDouble())}" },
+                            ).joinToString(" · ")
+                            de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND -> "nicht in OpenCelliD"
+                            else -> "Fehler: ${o.message ?: "unbekannt"}"
+                        } + " (${formatDateTime(o.fetchedAt)})",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                Text(
+                    "OpenCelliD mittelt die Orte, an denen Nutzer die Zelle gemessen haben. Das ist meist nicht der Mast, " +
+                        "sondern liegt in Richtung der Hauptversorgung. Abweichungen von einigen hundert Metern sind normal. " +
+                        "Daten: OpenCelliD, CC BY-SA 4.0.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (lookupable.isNotEmpty()) {
+            if (key.isBlank()) {
+                Text(
+                    "Für den Abgleich einen OpenCelliD-Schlüssel in den Einstellungen eintragen.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { vm.compareWithOpenCellId(station) },
+                    enabled = progress?.running != true,
+                ) { Text(if (station.ocid.isEmpty()) "Mit OpenCelliD abgleichen" else "Erneut abgleichen") }
+            }
         }
     }
 }

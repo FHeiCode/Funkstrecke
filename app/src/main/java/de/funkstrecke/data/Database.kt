@@ -186,6 +186,18 @@ interface CellDao {
     @Query("DELETE FROM cells")
     suspend fun clearCells()
 
+    @Query("SELECT * FROM opencellid")
+    fun observeOcid(): Flow<List<OcidEntity>>
+
+    @Query("SELECT * FROM opencellid WHERE cellKey = :cellKey")
+    suspend fun getOcid(cellKey: String): OcidEntity?
+
+    @Upsert
+    suspend fun upsertOcid(entity: OcidEntity)
+
+    @Query("DELETE FROM opencellid")
+    suspend fun clearOcid()
+
     @Query("DELETE FROM measurements")
     suspend fun clearMeasurements()
 
@@ -194,8 +206,8 @@ interface CellDao {
 }
 
 @Database(
-    entities = [CellEntity::class, MeasurementEntity::class, EstimateEntity::class],
-    version = 4,
+    entities = [CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class],
+    version = 5,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -204,6 +216,17 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var instance: AppDatabase? = null
+
+        /** 4 → 5: Zwischenspeicher für den OpenCelliD-Abgleich. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `opencellid` (`cellKey` TEXT NOT NULL, `status` TEXT NOT NULL, " +
+                        "`latitude` REAL, `longitude` REAL, `rangeM` INTEGER, `samples` INTEGER, " +
+                        "`fetchedAt` INTEGER NOT NULL, `message` TEXT, PRIMARY KEY(`cellKey`))",
+                )
+            }
+        }
 
         /**
          * 3 → 4: Timing-Advance-Werte von Nachbarzellen und unrealistische Werte entfernen
@@ -234,7 +257,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "funkstrecke.db",
                 )
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()

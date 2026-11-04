@@ -73,7 +73,28 @@ data class BaseStation(
     val nrLegs: List<CellEntity> = emptyList(),
     /** Gleiche PCI auf gleichem Träger bei einer nahen anderen Station */
     val pciConflicts: List<PciConflict> = emptyList(),
+    /** OpenCelliD-Ergebnisse der Zellen dieser Station */
+    val ocid: List<OcidEntity> = emptyList(),
 ) {
+    /** Mittel der OpenCelliD-Positionen aller gefundenen Zellen */
+    val ocidPosition: Pair<Double, Double>?
+        get() {
+            val f = ocid.filter { it.found && it.latitude != null && it.longitude != null }
+            if (f.isEmpty()) return null
+            return f.map { it.latitude!! }.average() to f.map { it.longitude!! }.average()
+        }
+
+    /** Alle abgeglichenen Zellen fehlen in OpenCelliD */
+    val ocidUnknown: Boolean get() = ocid.isNotEmpty() && ocid.none { it.found } && ocid.all { it.status == OcidEntity.STATUS_NOT_FOUND }
+
+    /** Abstand zwischen eigener Schätzung und OpenCelliD-Position */
+    val ocidDistanceM: Double?
+        get() {
+            val e = estimate ?: return null
+            val (lat, lon) = ocidPosition ?: return null
+            return distanceM(e.latitude, e.longitude, lat, lon)
+        }
+
     /** EN-DC war über diese Station verbunden */
     val endcConnected: Boolean get() = cells.any { it.endcConnectedSamples > 0 }
     /** EN-DC war über diese Station verfügbar (angekündigt oder verbunden) */
@@ -119,7 +140,7 @@ private const val CLUSTER_DISTANCE_M = 1_500.0
 /** Bis zu diesem Abstand gilt gleiche PCI auf gleichem Träger als Konflikt */
 private const val PCI_CONFLICT_DISTANCE_M = 5_000.0
 
-private fun distanceM(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
+internal fun distanceM(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
     val kx = 111_320.0 * cos((aLat + bLat) / 2 * PI / 180.0)
     return hypot((aLon - bLon) * kx, (aLat - bLat) * 110_540.0)
 }
@@ -142,6 +163,19 @@ fun buildStations(
     cells: List<CellEntity>,
     estimates: List<EstimateEntity>,
     centroids: List<CellCentroid> = emptyList(),
+    ocid: List<OcidEntity> = emptyList(),
+): List<BaseStation> {
+    val ocidOf = ocid.associateBy { it.cellKey }
+    return buildStationsCore(cells, estimates, centroids).map { s ->
+        val results = s.cells.mapNotNull { ocidOf[it.id] }
+        if (results.isEmpty()) s else s.copy(ocid = results)
+    }
+}
+
+private fun buildStationsCore(
+    cells: List<CellEntity>,
+    estimates: List<EstimateEntity>,
+    centroids: List<CellCentroid>,
 ): List<BaseStation> {
     val estimateOf = estimates.associateBy { it.groupKey }
     val centroidOf = centroids.associateBy { it.cellKey }

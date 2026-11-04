@@ -56,6 +56,15 @@ object SettingsStore {
         prefs?.edit()?.putString("callBehavior", value.name)?.apply()
     }
 
+    private val ocidKeyState = MutableStateFlow("")
+    /** API-Schlüssel für OpenCelliD (leer = Abgleich aus) */
+    val openCellIdKey: StateFlow<String> = ocidKeyState.asStateFlow()
+
+    fun setOpenCellIdKey(value: String) {
+        ocidKeyState.value = value.trim()
+        prefs?.edit()?.putString("openCellIdKey", value.trim())?.apply()
+    }
+
     private val dataState = MutableStateFlow(CallBehavior.PASSIVE)
     val dataBehavior: StateFlow<CallBehavior> = dataState.asStateFlow()
 
@@ -79,6 +88,7 @@ object SettingsStore {
         )
         callState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("callBehavior", null) } ?: CallBehavior.PAUSE
         dataState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("dataBehavior", null) } ?: CallBehavior.PASSIVE
+        ocidKeyState.value = p.getString("openCellIdKey", "").orEmpty()
     }
 
     fun update(transform: (ScanSettings) -> ScanSettings) {

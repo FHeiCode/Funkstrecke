@@ -66,11 +66,6 @@ private const val CROSSING_MAX_GAP_MS = 120_000L
 /** Übergänge mit größerem Abstand der Punkte sind zu ungenau für eine Markierung */
 private const val CROSSING_MAX_DISTANCE_M = 1_500.0
 
-private fun distanceM(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
-    val kx = 111_320.0 * kotlin.math.cos(Math.toRadians((aLat + bLat) / 2))
-    return kotlin.math.hypot((aLon - bLon) * kx, (aLat - bLat) * 110_540.0)
-}
-
 /** [points] zeitlich sortiert. */
 fun buildTrackingAreas(points: List<TaPoint>): Map<TaKey, TrackingAreaMap> {
     val byKey = points.groupBy { TaKey(Operators.name(it.mcc, it.mnc) ?: (if (it.mcc != null) "${it.mcc}-${it.mnc}" else "Unbekannt"), taGroupOf(it.rat)) }

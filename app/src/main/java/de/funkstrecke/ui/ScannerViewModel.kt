@@ -7,6 +7,8 @@ import de.funkstrecke.data.AppDatabase
 import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CoverageTile
 import de.funkstrecke.data.EndcTile
+import de.funkstrecke.data.OcidProgress
+import de.funkstrecke.data.OpenCellId
 import de.funkstrecke.data.TaKey
 import de.funkstrecke.data.TrackingAreaMap
 import de.funkstrecke.data.buildTrackingAreas
@@ -19,6 +21,7 @@ import de.funkstrecke.radio.LiveScan
 import de.funkstrecke.util.Busy
 import de.funkstrecke.util.CallGuard
 import de.funkstrecke.util.CsvExport
+import de.funkstrecke.util.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,8 +56,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         dao.observeCells(),
         dao.observeEstimates(),
         dao.observeCentroids(),
-    ) { cells, estimates, centroids ->
-        buildStations(cells, estimates, centroids)
+        dao.observeOcid(),
+    ) { cells, estimates, centroids, ocid ->
+        buildStations(cells, estimates, centroids, ocid)
     }
         .conflate()
         .flowOn(Dispatchers.Default)
@@ -128,10 +132,34 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _ocidProgress = MutableStateFlow<OcidProgress?>(null)
+    /** Stand des OpenCelliD-Abgleichs; null = noch keiner gelaufen */
+    val ocidProgress: StateFlow<OcidProgress?> = _ocidProgress.asStateFlow()
+    private var ocidJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Gleicht Zellen mit OpenCelliD ab: alle Stationen oder nur [station].
+     * Bei einer einzelnen Station wird immer neu abgefragt, sonst nur Fehlendes und Veraltetes.
+     */
+    fun compareWithOpenCellId(station: BaseStation? = null) {
+        val key = SettingsStore.openCellIdKey.value
+        if (key.isBlank() || ocidJob?.isActive == true) return
+        ocidJob = viewModelScope.launch {
+            val cells = station?.cells ?: dao.allCells()
+            OpenCellId.compare(db, key, cells, force = station != null) { _ocidProgress.value = it }
+        }
+    }
+
+    fun cancelOpenCellId() {
+        ocidJob?.cancel()
+        _ocidProgress.value = _ocidProgress.value?.copy(running = false, stopReason = "Abgebrochen")
+    }
+
     fun clearAll() {
         viewModelScope.launch {
             dao.clearMeasurements()
             dao.clearEstimates()
+            dao.clearOcid()
             dao.clearCells()
             Recorder.reset()
         }

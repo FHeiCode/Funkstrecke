@@ -47,6 +47,7 @@ import de.funkstrecke.data.BaseStation
 import de.funkstrecke.ui.theme.signalColor
 import de.funkstrecke.ui.theme.signalLevel
 import de.funkstrecke.util.formatAgo
+import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatDistance
 
 private const val UNKNOWN_OPERATOR = "Unbekannt"
@@ -63,6 +64,8 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     var ratFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    val ocidKey by SettingsStore.openCellIdKey.collectAsStateWithLifecycle()
+    val ocidProgress by vm.ocidProgress.collectAsStateWithLifecycle()
 
     val operators = remember(stations) { stations.map { it.operatorName ?: UNKNOWN_OPERATOR }.distinct().sorted() }
     val rats = remember(stations) { stations.map { it.rat }.distinct().sorted() }
@@ -107,6 +110,13 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             text = { Text("Messprotokoll als CSV exportieren") },
                             enabled = measurementCount > 0,
                             onClick = { menuOpen = false; vm.exportMeasurements() },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(if (ocidKey.isBlank()) "OpenCelliD: Schlüssel in den Einstellungen eintragen" else "Mit OpenCelliD abgleichen")
+                            },
+                            enabled = ocidKey.isNotBlank() && cellCount > 0 && ocidProgress?.running != true,
+                            onClick = { menuOpen = false; vm.compareWithOpenCellId() },
                         )
                         DropdownMenuItem(
                             text = { Text("Alle Daten löschen", color = MaterialTheme.colorScheme.error) },
@@ -171,6 +181,9 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     }
                 }
             }
+            ocidProgress?.let { p ->
+                item(key = "ocid") { OcidBanner(p, onCancel = { vm.cancelOpenCellId() }) }
+            }
             if (shown.isEmpty()) {
                 item {
                     Text(
@@ -232,6 +245,24 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                     station.estimate?.let { "Standort ±${formatDistance(it.radiusM)}" } ?: "kein Standort",
                 ).joinToString(" · ")
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val ocidDistance = station.ocidDistanceM
+                when {
+                    station.ocidUnknown -> Text(
+                        "Nicht in OpenCelliD",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    ocidDistance != null -> Text(
+                        "OpenCelliD: ${formatDistance(ocidDistance)} von deiner Schätzung",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    station.ocidPosition != null -> Text(
+                        "In OpenCelliD bekannt",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (station.pciConflicts.isNotEmpty()) {
                     val c = station.pciConflicts.first()
                     Text(
@@ -256,6 +287,31 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                 )
                 Text("max dBm", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+/** Fortschritt und Ergebnis des OpenCelliD-Abgleichs. */
+@Composable
+private fun OcidBanner(p: de.funkstrecke.data.OcidProgress, onCancel: () -> Unit) {
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                when {
+                    p.running -> "OpenCelliD-Abgleich: ${p.done} von ${p.total} Zellen · ${p.found} bekannt, ${p.notFound} unbekannt"
+                    p.stopReason != null -> "OpenCelliD-Abgleich gestoppt: ${p.stopReason}. ${p.found} bekannt, ${p.notFound} unbekannt."
+                    p.total == 0 -> "OpenCelliD-Abgleich: alle Zellen sind bereits abgeglichen (gilt 30 Tage)."
+                    else -> "OpenCelliD-Abgleich fertig: ${p.found} bekannt, ${p.notFound} nicht in OpenCelliD."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (p.running) TextButton(onClick = onCancel) { Text("Abbrechen") }
         }
     }
 }
