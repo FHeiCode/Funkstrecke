@@ -109,12 +109,19 @@ object OsmMasts {
     /** Bis zu diesem Abstand wird der nächste Mast angezeigt */
     const val SEARCH_M = 1_000.0
     /** Höchstens so viele Kacheln für einen Kartenausschnitt (sonst zu weit herausgezoomt) */
-    const val MAX_VIEW_TILES = 9
+    const val MAX_VIEW_TILES = 4
 
     private const val ENDPOINT = "https://overpass-api.de/api/interpreter"
     private const val REQUEST_SPACING_MS = 1_500L
 
     fun tileOf(lat: Double, lon: Double): String = "${floor(lat / TILE_LAT).toInt()}_${floor(lon / TILE_LON).toInt()}"
+
+    /** Kacheln, sortiert nach Abstand ihrer Mitte zu einem Punkt (Wichtigstes zuerst laden) */
+    fun sortedByDistance(tiles: List<String>, lat: Double, lon: Double): List<String> =
+        tiles.sortedBy { t ->
+            val b = bounds(t)
+            distanceM(lat, lon, (b[0] + b[2]) / 2, (b[1] + b[3]) / 2)
+        }
 
     /** Kacheln, die ein Gebiet abdecken */
     fun tilesFor(south: Double, west: Double, north: Double, east: Double): List<String> {
@@ -148,7 +155,7 @@ object OsmMasts {
         val b = bounds(tile)
         val bbox = String.format(Locale.US, "%.5f,%.5f,%.5f,%.5f", b[0], b[1], b[2], b[3])
         val query = """
-            [out:json][timeout:60];
+            [out:json][timeout:90];
             (
               nwr["man_made"~"^(mast|tower)$"]["tower:type"="communication"]($bbox);
               nwr["man_made"="communications_tower"]($bbox);
@@ -160,7 +167,7 @@ object OsmMasts {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = 20_000
-            readTimeout = 70_000
+            readTimeout = 120_000
             setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
             setRequestProperty("User-Agent", "Funkstrecke-Android (github.com/FHeiCode/Funkstrecke)")
         }

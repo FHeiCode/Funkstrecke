@@ -191,7 +191,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     /** OSM-Masten für einen Kartenausschnitt laden (nur bei ausreichend kleinem Ausschnitt). */
     fun loadOsmView(south: Double, west: Double, north: Double, east: Double) {
         val tiles = OsmMasts.tilesFor(south, west, north, east)
-        if (tiles.size <= OsmMasts.MAX_VIEW_TILES) loadOsm(tiles)
+        if (tiles.size <= OsmMasts.MAX_VIEW_TILES) loadOsm(OsmMasts.sortedByDistance(tiles, (south + north) / 2, (west + east) / 2))
     }
 
     /** OSM-Masten im Umkreis einer Station laden. */
