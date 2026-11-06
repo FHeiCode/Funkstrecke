@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -59,6 +60,7 @@ import de.funkstrecke.locate.localizeMethod
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
 import de.funkstrecke.ui.theme.signalLevel
+import de.funkstrecke.util.EmfMap
 import de.funkstrecke.util.formatCoordinates
 import de.funkstrecke.util.formatDateTime
 import de.funkstrecke.util.formatDistance
@@ -194,6 +196,28 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                         Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(tr("In Karten-App öffnen", "Open in maps app"))
+                    }
+                    if (station.mcc == null || station.mcc == "262") {
+                        OutlinedButton(onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(EmfMap.url(e.latitude, e.longitude))))
+                            }
+                        }) {
+                            Icon(Icons.Filled.CellTower, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(tr("Amtliche Standorte (EMF-Karte)", "Official sites (EMF map)"))
+                        }
+                        Text(
+                            tr(
+                                "Öffnet die EMF-Karte der Bundesnetzagentur an deiner Schätzung. Sie zeigt genehmigte Funkanlagen " +
+                                    "(Lage bis 80 m ungenau), aber keine Cell-IDs: Liegt ein Standort nahe deiner Schätzung, ist er " +
+                                    "sehr wahrscheinlich dein Mast.",
+                                "Opens the Federal Network Agency's EMF map at your estimate. It shows licensed radio sites " +
+                                    "(position up to 80 m off) but no cell IDs: a site close to your estimate is very likely your mast.",
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
