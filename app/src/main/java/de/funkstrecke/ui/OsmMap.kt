@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.drawable.GradientDrawable
 import android.location.Location
@@ -54,7 +55,15 @@ data class MapDot(
 )
 
 /** Eine Linie auf der Karte (z. B. Grenze einer Tracking Area), Farbe als ARGB, Breite in dp. */
-data class CoverageLine(val lat1: Double, val lon1: Double, val lat2: Double, val lon2: Double, val argb: Int, val widthDp: Float)
+data class CoverageLine(
+    val lat1: Double,
+    val lon1: Double,
+    val lat2: Double,
+    val lon2: Double,
+    val argb: Int,
+    val widthDp: Float,
+    val dashed: Boolean = false,
+)
 
 /** Ein farbiges Rechteck der Abdeckungskarte (Farbe als ARGB). */
 data class CoverageRect(val south: Double, val west: Double, val north: Double, val east: Double, val argb: Int)
@@ -116,36 +125,14 @@ private class CoverageOverlay : Overlay() {
             projection.toPixels(p2, b)
             linePaint.color = l.argb
             linePaint.strokeWidth = l.widthDp * density
+            linePaint.pathEffect = if (l.dashed) DashPathEffect(floatArrayOf(5f * density, 4f * density), 0f) else null
             canvas.drawLine(a.x.toFloat(), a.y.toFloat(), b.x.toFloat(), b.y.toFloat(), linePaint)
         }
     }
 }
 
-/** Zugriff auf die aktuelle Mitte einer [OsmMap], z. B. um eine andere Karte dort zu öffnen. */
-class MapCenterHandle {
-    var provider: (() -> Pair<Double, Double>)? = null
-    val center: Pair<Double, Double>? get() = provider?.invoke()
-}
-
-/** Ein Unsicherheitskreis (Standortschätzung); mit [sector] nur der Kreissektor in diese Richtung. */
-data class MapCircle(
-    val latitude: Double,
-    val longitude: Double,
-    val radiusM: Double,
-    val color: Color,
-    val sector: de.funkstrecke.data.Sector? = null,
-)
-
-/** Umriss eines Kreises oder Kreissektors (Spitze in der Mitte, Bogen in 5°-Schritten). */
-private fun circlePoints(c: MapCircle): List<GeoPoint> {
-    val center = GeoPoint(c.latitude, c.longitude)
-    val s = c.sector ?: return Polygon.pointsAsCircle(center, c.radiusM)
-    val steps = maxOf(2, (2 * s.halfWidthDeg / 5).toInt())
-    val arc = (0..steps).map { i ->
-        center.destinationPoint(c.radiusM, s.bearingDeg - s.halfWidthDeg + 2 * s.halfWidthDeg * i / steps)
-    }
-    return listOf(center) + arc + center
-}
+/** Ein Unsicherheitskreis (Standortschätzung). */
+data class MapCircle(val latitude: Double, val longitude: Double, val radiusM: Double, val color: Color)
 
 /** Roter Punkt mit weißem Rand für die eigene Position. */
 private fun positionBitmap(context: Context): Bitmap {
@@ -236,8 +223,6 @@ fun OsmMap(
     coverage: List<CoverageRect> = emptyList(),
     /** Linien über den Feldern, z. B. Grenzen von Tracking Areas */
     lines: List<CoverageLine> = emptyList(),
-    /** Liefert auf Abruf die aktuelle Kartenmitte */
-    centerHandle: MapCenterHandle? = null,
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -352,8 +337,6 @@ fun OsmMap(
         }
     }
 
-    centerHandle?.provider = { mapView.mapCenter.latitude to mapView.mapCenter.longitude }
-
     AndroidView(
         factory = { mapView },
         modifier = modifier,
@@ -361,9 +344,7 @@ fun OsmMap(
             map.overlays.removeAll { it is Marker || it is Polygon }
             val added = mutableListOf<Overlay>()
             circles.forEach { c ->
-                if (c.sector != null) {
-                    // Voller 95-%-Kreis bleibt als blasse, gestrichelte Linie sichtbar.
-                    added += Polygon(map).apply {
+                added += Polygon(map).apply {
                         points = Polygon.pointsAsCircle(GeoPoint(c.latitude, c.longitude), c.radiusM)
                         fillPaint.color = android.graphics.Color.TRANSPARENT
                         outlinePaint.color = c.color.copy(alpha = 0.3f).toArgb()
@@ -373,7 +354,7 @@ fun OsmMap(
                     }
                 }
                 added += Polygon(map).apply {
-                    points = circlePoints(c)
+                    points = Polygon.pointsAsCircle(GeoPoint(c.latitude, c.longitude), c.radiusM)
                     fillPaint.color = c.color.copy(alpha = 0.12f).toArgb()
                     outlinePaint.color = c.color.copy(alpha = 0.7f).toArgb()
                     outlinePaint.strokeWidth = 3f

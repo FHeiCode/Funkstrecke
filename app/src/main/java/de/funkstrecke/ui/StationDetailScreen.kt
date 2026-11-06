@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -51,7 +51,7 @@ import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CellEntity
 import de.funkstrecke.data.LinkConfidence
 import de.funkstrecke.data.MeasurementEntity
-import de.funkstrecke.data.ocidSector
+import de.funkstrecke.data.ocidTargets
 import de.funkstrecke.data.pciGroup
 import de.funkstrecke.data.pciPss
 import de.funkstrecke.data.supportsPciGroups
@@ -60,7 +60,6 @@ import de.funkstrecke.locate.localizeMethod
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
 import de.funkstrecke.ui.theme.signalLevel
-import de.funkstrecke.util.EmfMap
 import de.funkstrecke.util.formatCoordinates
 import de.funkstrecke.util.formatDateTime
 import de.funkstrecke.util.formatDistance
@@ -95,17 +94,6 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück", "Back")) }
                 },
                 actions = {
-                    val emfAt = station?.takeIf { it.mcc == null || it.mcc == "262" }
-                        ?.let { s -> s.estimate?.let { it.latitude to it.longitude } ?: s.ocidPosition }
-                    if (emfAt != null) {
-                        IconButton(onClick = {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(EmfMap.url(emfAt.first, emfAt.second))))
-                            }
-                        }) {
-                            Icon(Icons.Filled.CellTower, contentDescription = tr("Amtliche Standorte (EMF-Karte)", "Official sites (EMF map)"))
-                        }
-                    }
                     if (station != null && measurements.isNotEmpty()) {
                         IconButton(onClick = { vm.recompute(station) }) {
                             Icon(Icons.Filled.Refresh, contentDescription = tr("Standort neu berechnen", "Recalculate location"))
@@ -208,28 +196,6 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                         Spacer(Modifier.width(8.dp))
                         Text(tr("In Karten-App öffnen", "Open in maps app"))
                     }
-                    if (station.mcc == null || station.mcc == "262") {
-                        OutlinedButton(onClick = {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(EmfMap.url(e.latitude, e.longitude))))
-                            }
-                        }) {
-                            Icon(Icons.Filled.CellTower, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text(tr("Amtliche Standorte (EMF-Karte)", "Official sites (EMF map)"))
-                        }
-                        Text(
-                            tr(
-                                "Öffnet die EMF-Karte der Bundesnetzagentur an deiner Schätzung. Sie zeigt genehmigte Funkanlagen " +
-                                    "(Lage bis 80 m ungenau), aber keine Cell-IDs: Liegt ein Standort nahe deiner Schätzung, ist er " +
-                                    "sehr wahrscheinlich dein Mast.",
-                                "Opens the Federal Network Agency's EMF map at your estimate. It shows licensed radio sites " +
-                                    "(position up to 80 m off) but no cell IDs: a site close to your estimate is very likely your mast.",
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
 
@@ -317,11 +283,16 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
                 )
             }
     }
-    val sector = ocidSector(station)
-    val circles = remember(e, sector) { listOf(MapCircle(e.latitude, e.longitude, e.radiusM, color, sector)) }
+    val circles = remember(e) { listOf(MapCircle(e.latitude, e.longitude, e.radiusM, color)) }
+    val ocidLines = remember(station, e) {
+        ocidTargets(station).map { o ->
+            CoverageLine(e.latitude, e.longitude, o.latitude!!, o.longitude!!, OcidColor.toArgb(), 1.5f, dashed = true)
+        }
+    }
     OsmMap(
         dots = dots,
         circles = circles,
+        lines = ocidLines,
         focus = MapFocus.Around(e.latitude, e.longitude, radiusM = 1_000.0),
         modifier = Modifier
             .fillMaxWidth()
@@ -330,7 +301,7 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
     )
     Text(
         tr("Punkte: deine Messorte, grün = starker, rot = schwacher Pegel. Großer Punkt und Kreis: geschätzter Mast.", "Dots: your measurement spots, green = strong, red = weak signal. Large dot and circle: estimated mast.") +
-            if (sector != null) tr(" Weicht OpenCelliD (lila) etwas ab, zeigt statt des Kreises ein Sektor zur OpenCelliD-Position: Dort liegt der Mast am ehesten.", " If OpenCelliD (purple) is a bit off, a sector toward the OpenCelliD position replaces the circle: the mast is most likely there.") else "",
+            if (ocidLines.isNotEmpty()) tr(" Lila, gestrichelt: OpenCelliD-Position je Zelle.", " Purple, dashed: OpenCelliD position per cell.") else "",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

@@ -65,32 +65,14 @@ fun assessStation(station: BaseStation): Assessment =
     station.cells.map { assessCell(station, it) }.minByOrNull { it.reliability.ordinal }
         ?: Assessment(Reliability.ARTEFACT, tr("keine Zellen", "no cells"))
 
-/** Mindest- und Höchstabstand zu OpenCelliD, ab/bis zu dem statt des Kreises ein Sektor gezeigt wird. */
-const val OCID_SECTOR_MIN_M = 30.0
-const val OCID_SECTOR_MAX_M = 1_000.0
+/** Unter diesem Abstand zur eigenen Schätzung wird keine Verbindungslinie zu OpenCelliD gezeichnet. */
+const val OCID_LINE_MIN_M = 30.0
 
-/** Kreissektor: Mittelrichtung (Grad, 0 = Nord, im Uhrzeigersinn) und halbe Öffnung (Grad). */
-data class Sector(val bearingDeg: Double, val halfWidthDeg: Double)
-
-/**
- * Sektor des eigenen Unsicherheitskreises in Richtung der OpenCelliD-Position.
- * OpenCelliD bestätigt die Zelle, liegt aber etwas daneben: Der Mast liegt dann eher auf
- * dieser Seite. Die Öffnung ist der Winkel, unter dem der Kreis von der OpenCelliD-Position
- * aus erscheint: weit, wenn sie nah an der Schätzung liegt (schwacher Hinweis), eng, wenn
- * sie weit weg liegt (30°–75° halbe Öffnung). Über 1 km Abstand ist eher OpenCelliD oder
- * die Schätzung falsch, dann bleibt es beim vollen Kreis.
- */
-fun ocidSector(station: BaseStation): Sector? {
-    val e = station.estimate ?: return null
-    val (lat, lon) = station.ocidPosition ?: return null
-    val d = distanceM(e.latitude, e.longitude, lat, lon)
-    if (d < OCID_SECTOR_MIN_M || d > OCID_SECTOR_MAX_M) return null
-    val half = Math.toDegrees(kotlin.math.atan2(e.radiusM, d)).coerceIn(30.0, 75.0)
-    return Sector(bearingDeg(e.latitude, e.longitude, lat, lon), half)
-}
-
-internal fun bearingDeg(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
-    val dx = (bLon - aLon) * 111_320.0 * kotlin.math.cos(Math.toRadians((aLat + bLat) / 2))
-    val dy = (bLat - aLat) * 110_540.0
-    return (Math.toDegrees(kotlin.math.atan2(dx, dy)) + 360.0) % 360.0
+/** In OpenCelliD gefundene Zellen einer Station mit Position, je Zelle (für Verbindungslinien auf der Karte). */
+fun ocidTargets(station: BaseStation): List<OcidEntity> {
+    val e = station.estimate ?: return emptyList()
+    return station.ocid.filter {
+        it.found && it.latitude != null && it.longitude != null &&
+            distanceM(e.latitude, e.longitude, it.latitude, it.longitude) >= OCID_LINE_MIN_M
+    }
 }

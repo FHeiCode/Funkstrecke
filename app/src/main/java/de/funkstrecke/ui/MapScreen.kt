@@ -1,7 +1,5 @@
 package de.funkstrecke.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -20,10 +18,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -55,10 +51,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.CoverageCell
 import de.funkstrecke.data.Reliability
 import de.funkstrecke.data.coverageFor
-import de.funkstrecke.data.ocidSector
+import de.funkstrecke.data.ocidTargets
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
-import de.funkstrecke.util.EmfMap
 import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.formatDistance
@@ -123,7 +118,6 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val context = LocalContext.current
     val canLocate = remember { LocationHelper.hasPermission(context) }
     var recenterKey by rememberSaveable { mutableIntStateOf(0) }
-    val centerHandle = remember { MapCenterHandle() }
     var mode by rememberSaveable { mutableStateOf(MapMode.STATIONS) }
 
     var coverageView by rememberSaveable { mutableStateOf(CoverageView.SIGNAL) }
@@ -204,6 +198,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     // mögliches Artefakt = nur Ring ohne Kreis (standardmäßig ausgeblendet).
     var showCandidates by rememberSaveable { mutableStateOf(true) }
     var showArtefacts by rememberSaveable { mutableStateOf(false) }
+    var showOcid by rememberSaveable { mutableStateOf(true) }
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
     val visible = remember(assessed, showCandidates, showArtefacts) {
@@ -222,11 +217,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 null
             } else {
                 val c = operatorColorRaw(s.operatorName)
-                MapCircle(
-                    e.latitude, e.longitude, e.radiusM,
-                    if (a.reliability == Reliability.RELIABLE) c else c.copy(alpha = 0.5f),
-                    sector = ocidSector(s),
-                )
+                MapCircle(e.latitude, e.longitude, e.radiusM, if (a.reliability == Reliability.RELIABLE) c else c.copy(alpha = 0.5f))
             }
         }
     }
@@ -247,6 +238,32 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 snippet = "${s.operatorName ?: tr("Unbekannt", "Unknown")} · ${a.reason}",
                 onClick = { onOpen(s.key) },
                 hollow = a.reliability == Reliability.ARTEFACT,
+            )
+        }
+    }
+
+    // OpenCelliD: gestrichelte Linie von der eigenen Schätzung zu jeder dort verzeichneten Zelle.
+    val ocidPairs = remember(visible, showOcid) {
+        if (!showOcid) emptyList() else visible.flatMap { (s, _) -> ocidTargets(s).map { s to it } }
+    }
+    val ocidLines = remember(ocidPairs) {
+        ocidPairs.map { (s, o) ->
+            val e = s.estimate!!
+            CoverageLine(e.latitude, e.longitude, o.latitude!!, o.longitude!!, OcidPurple.toArgb(), 1.5f, dashed = true)
+        }
+    }
+    val ocidDots = remember(ocidPairs) {
+        ocidPairs.map { (s, o) ->
+            val cell = s.cells.firstOrNull { it.id == o.cellKey }
+            MapDot(
+                latitude = o.latitude!!,
+                longitude = o.longitude!!,
+                color = OcidPurple,
+                sizeDp = 10,
+                title = "OpenCelliD · ${s.title}",
+                snippet = tr("Sektor", "Sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}",
+                onClick = { onOpen(s.key) },
+                hollow = true,
             )
         }
     }
@@ -288,7 +305,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             OsmMap(
                 dots = when (mode) {
-                    MapMode.STATIONS -> dots
+                    MapMode.STATIONS -> ocidDots + dots
                     MapMode.TRACKING -> taDots
                     MapMode.COVERAGE -> emptyList()
                 },
@@ -298,9 +315,12 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     MapMode.TRACKING -> taRects
                     MapMode.STATIONS -> emptyList()
                 },
-                lines = if (mode == MapMode.TRACKING) taLines else emptyList(),
+                lines = when (mode) {
+                    MapMode.TRACKING -> taLines
+                    MapMode.STATIONS -> ocidLines
+                    MapMode.COVERAGE -> emptyList()
+                },
                 modifier = Modifier.fillMaxSize(),
-                centerHandle = centerHandle,
                 focus = MapFocus.OwnPosition(radiusM = 1_000.0),
                 recenterKey = recenterKey,
             )
@@ -342,6 +362,18 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             onClick = { showArtefacts = !showArtefacts },
                             label = { Text(tr("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}", "Artefacts ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}")) },
                             leadingIcon = { ReliabilityDot(Reliability.ARTEFACT) },
+                        )
+                        FilterChip(
+                            selected = showOcid,
+                            onClick = { showOcid = !showOcid },
+                            label = { Text("OpenCelliD") },
+                            leadingIcon = {
+                                Box(
+                                    Modifier
+                                        .size(12.dp)
+                                        .border(2.dp, OcidPurple, androidx.compose.foundation.shape.CircleShape),
+                                )
+                            },
                         )
                     }
                 }
@@ -427,36 +459,21 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 )
             }
 
-            Column(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.End,
-            ) {
-                if (mode == MapMode.STATIONS) {
-                    val context = LocalContext.current
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            centerHandle.center?.let { (lat, lon) ->
-                                runCatching {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(EmfMap.url(lat, lon))))
-                                }
-                            }
-                        },
-                        icon = { Icon(Icons.Filled.CellTower, contentDescription = null) },
-                        text = { Text(tr("EMF-Karte", "EMF map")) },
-                    )
-                }
-                if (canLocate) {
-                    SmallFloatingActionButton(onClick = { recenterKey++ }) {
-                        Icon(Icons.Filled.MyLocation, contentDescription = tr("Auf meine Position zentrieren", "Center on my position"))
-                    }
+            if (canLocate) {
+                SmallFloatingActionButton(
+                    onClick = { recenterKey++ },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(16.dp),
+                ) {
+                    Icon(Icons.Filled.MyLocation, contentDescription = tr("Auf meine Position zentrieren", "Center on my position"))
                 }
             }
         }
     }
 }
+
+private val OcidPurple = Color(0xFF7B3FB0)
 
 @Composable
 private fun ChipBar(content: @Composable () -> Unit) {

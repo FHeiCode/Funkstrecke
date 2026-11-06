@@ -49,7 +49,7 @@ Histogramm in der Stationsliste: Abstand je Zelle zwischen eigener Mast-Schätzu
 - *Kandidat*: eigene Schätzung genauer als 1 km
 - *mögliches Artefakt*: alles Übrige (sehr ungenau oder gar nicht verortet)
 Eine Station übernimmt die beste Bewertung ihrer Zellen. Stationsliste: Übersicht mit Balken und Zählern (antippen filtert), Plakette an jeder Station. Karte: zuverlässig = kräftiger Punkt mit Kreis, Kandidat = blasser Punkt, Artefakt = leerer Ring (standardmäßig ausgeblendet, per Chip zuschaltbar). Stationsansicht: Begründung und Spalte „Bewertung“ je Zelle; CSV-Export mit „Bewertung“ und „Begründung“.
-Liegt die OpenCelliD-Position 30 m bis 1 km neben der eigenen Schätzung, zeigt die Karte statt des vollen Kreises einen Sektor in ihre Richtung (der volle Kreis bleibt blass gestrichelt). Die Öffnung entspricht dem Winkel, unter dem der Kreis von der OpenCelliD-Position aus erscheint, begrenzt auf ±30° bis ±75°: breit, wenn OpenCelliD im eigenen Kreis liegt, schmal, wenn deutlich außerhalb.
+In der Karte (Ansicht *Stationen*, Schalter „OpenCelliD“) und in der Stationsansicht verbindet eine dünne, lila gestrichelte Linie die eigene Schätzung mit der OpenCelliD-Position jeder dort verzeichneten Zelle (ab 30 m Abstand).
 
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt
@@ -59,8 +59,6 @@ Liegt die OpenCelliD-Position 30 m bis 1 km neben der eigenen Schätzung, zeigt 
 - Detailansicht mit Karte: Messorte (grün = stark, rot = schwach), geschätzter Mast und Kreis
 
 In einer Simulation (3 Sektoren, Messrauschen 5 dB) lag der Fehler nach zwei Straßen bei etwa 20 m, mit Timing Advance bei etwa 5 m. In echter Umgebung verfälschen Gebäude und Antennendiagramme die Pegel, rechne eher mit 50–200 m. Die Schätzung ist ein Suchgebiet.
-
-**EMF-Karte** – Öffnet die EMF-Karte der Bundesnetzagentur auf Straßenebene: in der Stationsansicht über das Mast-Symbol oben rechts (an der geschätzten oder ersatzweise der OpenCelliD-Position) bzw. den Knopf unter „Geschätzter Standort“, auf der Karte (Ansicht *Stationen*) über „EMF-Karte“ unten rechts an der aktuellen Kartenmitte. Sie zeigt genehmigte Funkanlagen mit Standortbescheinigung (Lage bis 80 m ungenau), aber keine Cell-IDs; ein Standort nahe der Schätzung ist sehr wahrscheinlich der gesuchte Mast. Nur für deutsche Netze (MCC 262).
 
 **Karte** – Umschalter *Stationen / Abdeckung / TA-Grenzen*.
 - *TA-Grenzen*: Tracking Areas (TAC, bei 2G/3G Location Areas mit LAC) je Betreiber und Technik. Jedes ~50-m-Feld erhält die TAC der verbundenen Zelle, die dort am häufigsten gemessen wurde (eigene Farbe je TAC). Linien zeigen Grenzen zwischen gemessenen Nachbarfeldern; dunkle Marker die Stellen, an denen das Handy unterwegs die TAC gewechselt hat (Tracking Area Update) – mit Uhrzeit und Genauigkeit der Grenzlage.
