@@ -5,8 +5,9 @@ import de.funkstrecke.util.tr
 
 /*
  * Bewertung erkannter Zellen:
- *  - zuverlässig: eigene Standortschätzung genauer als 200 m (95-%-Radius)
- *                 oder höchstens 200 m von der OpenCelliD-Position derselben Zelle entfernt
+ *  - zuverlässig: eigene Standortschätzung genauer als 200 m (95-%-Radius),
+ *                 höchstens 200 m von der OpenCelliD-Position derselben Zelle entfernt
+ *                 oder höchstens 100 m von einem Funkmast in OpenStreetMap
  *  - Kandidat:    eigene Standortschätzung genauer als 1 km
  *  - mögliches Artefakt: alles Übrige (kein oder ein sehr unsicherer Standort)
  * Eine Station übernimmt die beste Bewertung ihrer Zellen.
@@ -51,6 +52,8 @@ fun assessCell(station: BaseStation, cell: CellEntity): Assessment {
             Assessment(Reliability.RELIABLE, tr("Standort auf ±${m(e.radiusM)} geschätzt", "location estimated to ±${m(e.radiusM)}"))
         ocidDistance != null && ocidDistance <= OCID_MATCH_M ->
             Assessment(Reliability.RELIABLE, tr("OpenCelliD bestätigt (${m(ocidDistance)} Abstand)", "confirmed by OpenCelliD (${m(ocidDistance)} apart)"))
+        e != null && station.osmMastDistanceM != null && station.osmMastDistanceM <= OsmMasts.CONFIRM_M ->
+            Assessment(Reliability.RELIABLE, tr("OSM-Mast ${m(station.osmMastDistanceM)} entfernt", "OSM mast ${m(station.osmMastDistanceM)} away"))
         e != null && e.radiusM < CANDIDATE_RADIUS_M ->
             Assessment(Reliability.CANDIDATE, tr("Standort auf ±${m(e.radiusM)} geschätzt", "location estimated to ±${m(e.radiusM)}"))
         e != null ->

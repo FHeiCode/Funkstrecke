@@ -209,16 +209,35 @@ interface CellDao {
 }
 
 @Database(
-    entities = [CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class],
-    version = 5,
+    entities = [
+        CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class,
+        OsmMastEntity::class, OsmTileEntity::class,
+    ],
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun cellDao(): CellDao
+    abstract fun osmDao(): OsmDao
 
     companion object {
         @Volatile
         private var instance: AppDatabase? = null
+
+        /** 5 → 6: Zwischenspeicher für Funkmasten aus OpenStreetMap. */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `osm_masts` (`id` TEXT NOT NULL, `latitude` REAL NOT NULL, " +
+                        "`longitude` REAL NOT NULL, `kind` TEXT, `operator` TEXT, `heightM` REAL, `name` TEXT, " +
+                        "`tile` TEXT NOT NULL, PRIMARY KEY(`id`))",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_osm_masts_tile` ON `osm_masts` (`tile`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `osm_tiles` (`tile` TEXT NOT NULL, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`tile`))",
+                )
+            }
+        }
 
         /** 4 → 5: Zwischenspeicher für den OpenCelliD-Abgleich. */
         val MIGRATION_4_5 = object : Migration(4, 5) {
@@ -260,7 +279,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "funkstrecke.db",
                 )
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()

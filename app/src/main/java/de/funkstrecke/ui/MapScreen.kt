@@ -199,6 +199,38 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     var showCandidates by rememberSaveable { mutableStateOf(true) }
     var showArtefacts by rememberSaveable { mutableStateOf(false) }
     var showOcid by rememberSaveable { mutableStateOf(true) }
+    var showOsm by rememberSaveable { mutableStateOf(true) }
+    // Sichtbarer Ausschnitt: OSM-Masten werden nur dafür geladen und gezeichnet.
+    var viewBox by remember { mutableStateOf<List<Double>?>(null) }
+    val osmAll by vm.osmMasts.collectAsStateWithLifecycle()
+    val osmDots = remember(osmAll, viewBox, showOsm) {
+        val b = viewBox
+        if (!showOsm || b == null) {
+            emptyList()
+        } else {
+            val padLat = (b[2] - b[0]) * 0.2
+            val padLon = (b[3] - b[1]) * 0.2
+            val inView = osmAll.filter {
+                it.latitude in (b[0] - padLat)..(b[2] + padLat) && it.longitude in (b[1] - padLon)..(b[3] + padLon)
+            }
+            // Weit herausgezoomt wären es zu viele Symbole.
+            if (inView.size > 400) {
+                emptyList()
+            } else {
+                inView.map { m ->
+                    MapDot(
+                        latitude = m.latitude,
+                        longitude = m.longitude,
+                        color = OsmMastColor,
+                        sizeDp = 13,
+                        title = "OpenStreetMap · ${m.description}",
+                        snippet = m.name,
+                        mast = true,
+                    )
+                }
+            }
+        }
+    }
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
     val visible = remember(assessed, showCandidates, showArtefacts) {
@@ -268,6 +300,11 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
         }
     }
 
+    LaunchedEffect(mode, showOsm) {
+        val b = viewBox
+        if (mode == MapMode.STATIONS && showOsm && b != null) vm.loadOsmView(b[0], b[1], b[2], b[3])
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
@@ -305,7 +342,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             OsmMap(
                 dots = when (mode) {
-                    MapMode.STATIONS -> ocidDots + dots
+                    MapMode.STATIONS -> osmDots + ocidDots + dots
                     MapMode.TRACKING -> taDots
                     MapMode.COVERAGE -> emptyList()
                 },
@@ -323,6 +360,10 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 modifier = Modifier.fillMaxSize(),
                 focus = MapFocus.OwnPosition(radiusM = 1_000.0),
                 recenterKey = recenterKey,
+                onViewChanged = { south, west, north, east ->
+                    viewBox = listOf(south, west, north, east)
+                    if (mode == MapMode.STATIONS && showOsm) vm.loadOsmView(south, west, north, east)
+                },
             )
 
             // Bedienleiste oben
@@ -343,37 +384,49 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                         ) { Text(m.label) }
                     }
                 }
-                if (mode == MapMode.STATIONS && located.isNotEmpty()) {
+                if (mode == MapMode.STATIONS) {
                     ChipBar {
+                        if (located.isNotEmpty()) {
+                            FilterChip(
+                                selected = true,
+                                onClick = {},
+                                label = { Text("${Reliability.RELIABLE.label} ${reliabilityCounts[Reliability.RELIABLE] ?: 0}") },
+                                leadingIcon = { ReliabilityDot(Reliability.RELIABLE) },
+                            )
+                            FilterChip(
+                                selected = showCandidates,
+                                onClick = { showCandidates = !showCandidates },
+                                label = { Text(tr("Kandidaten ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}", "Candidates ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}")) },
+                                leadingIcon = { ReliabilityDot(Reliability.CANDIDATE) },
+                            )
+                            FilterChip(
+                                selected = showArtefacts,
+                                onClick = { showArtefacts = !showArtefacts },
+                                label = { Text(tr("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}", "Artefacts ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}")) },
+                                leadingIcon = { ReliabilityDot(Reliability.ARTEFACT) },
+                            )
+                            FilterChip(
+                                selected = showOcid,
+                                onClick = { showOcid = !showOcid },
+                                label = { Text("OpenCelliD") },
+                                leadingIcon = {
+                                    Box(
+                                        Modifier
+                                            .size(12.dp)
+                                            .border(2.dp, OcidPurple, androidx.compose.foundation.shape.CircleShape),
+                                    )
+                                },
+                            )
+                        }
                         FilterChip(
-                            selected = true,
-                            onClick = {},
-                            label = { Text("${Reliability.RELIABLE.label} ${reliabilityCounts[Reliability.RELIABLE] ?: 0}") },
-                            leadingIcon = { ReliabilityDot(Reliability.RELIABLE) },
-                        )
-                        FilterChip(
-                            selected = showCandidates,
-                            onClick = { showCandidates = !showCandidates },
-                            label = { Text(tr("Kandidaten ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}", "Candidates ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}")) },
-                            leadingIcon = { ReliabilityDot(Reliability.CANDIDATE) },
-                        )
-                        FilterChip(
-                            selected = showArtefacts,
-                            onClick = { showArtefacts = !showArtefacts },
-                            label = { Text(tr("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}", "Artefacts ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}")) },
-                            leadingIcon = { ReliabilityDot(Reliability.ARTEFACT) },
-                        )
-                        FilterChip(
-                            selected = showOcid,
-                            onClick = { showOcid = !showOcid },
-                            label = { Text("OpenCelliD") },
-                            leadingIcon = {
-                                Box(
-                                    Modifier
-                                        .size(12.dp)
-                                        .border(2.dp, OcidPurple, androidx.compose.foundation.shape.CircleShape),
-                                )
+                            selected = showOsm,
+                            onClick = {
+                                showOsm = !showOsm
+                                val b = viewBox
+                                if (showOsm && b != null) vm.loadOsmView(b[0], b[1], b[2], b[3])
                             },
+                            label = { Text(tr("OSM-Masten ${osmDots.size}", "OSM masts ${osmDots.size}")) },
+                            leadingIcon = { Text("▲", color = OsmMastColor, style = MaterialTheme.typography.labelMedium) },
                         )
                     }
                 }
@@ -474,6 +527,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 }
 
 private val OcidPurple = Color(0xFF7B3FB0)
+private val OsmMastColor = Color(0xFF3D4650)
 
 @Composable
 private fun ChipBar(content: @Composable () -> Unit) {

@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -51,6 +52,9 @@ import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CellEntity
 import de.funkstrecke.data.LinkConfidence
 import de.funkstrecke.data.MeasurementEntity
+import de.funkstrecke.data.OsmMastEntity
+import de.funkstrecke.data.OsmMasts
+import de.funkstrecke.data.distanceM
 import de.funkstrecke.data.ocidTargets
 import de.funkstrecke.data.pciGroup
 import de.funkstrecke.data.pciPss
@@ -84,6 +88,15 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
     val measurementKeys = station?.measurementKeys ?: listOf(stationKey)
     val measurementsFlow = remember(measurementKeys) { vm.measurementsFor(measurementKeys) }
     val measurements by measurementsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val osmAll by vm.osmMasts.collectAsStateWithLifecycle()
+    val est = station?.estimate
+    val osmNear = remember(osmAll, est) {
+        if (est == null) emptyList() else osmAll.filter { distanceM(est.latitude, est.longitude, it.latitude, it.longitude) <= OsmMasts.SEARCH_M }
+    }
+    // Masten rund um die Station automatisch nachladen (aus dem Zwischenspeicher, sonst einmal von Overpass).
+    LaunchedEffect(est?.latitude, est?.longitude) {
+        if (est != null) vm.loadOsmAround(est.latitude, est.longitude)
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -176,7 +189,7 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 } else {
-                    EstimateMap(station, measurements)
+                    EstimateMap(station, measurements, osmNear)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         KeyValue("Position", formatCoordinates(e.latitude, e.longitude))
                         KeyValue(tr("Unsicherheit (95 %)", "Uncertainty (95 %)"), "±${formatDistance(e.radiusM)}")
@@ -232,6 +245,10 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 OcidSection(station, vm)
             }
 
+            Section("OpenStreetMap") {
+                OsmSection(station, vm)
+            }
+
             Section(if (station.cells.size == 1) tr("Zelle", "Cell") else tr("Zellen (${station.cells.size})", "Cells (${station.cells.size})")) {
                 CellTable(station.rat, station.cells, station)
             }
@@ -261,9 +278,14 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
 
 /** Karte mit Messorten (gefärbt nach Pegel) und Unsicherheitskreis der Schätzung. */
 @Composable
-private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEntity>) {
+private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEntity>, osmNear: List<OsmMastEntity>) {
     val e = station.estimate ?: return
     val color = operatorColorRaw(station.operatorName)
+    val mastDots = remember(osmNear) {
+        osmNear.map { m ->
+            MapDot(m.latitude, m.longitude, OsmMastColor, sizeDp = 15, title = "OpenStreetMap · ${m.description}", snippet = m.name, mast = true)
+        }
+    }
     val dots = remember(measurements, e) {
         // Ein Punkt je ~20-m-Raster, stärkster Pegel zählt.
         val spots = measurements
@@ -290,7 +312,7 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
         }
     }
     OsmMap(
-        dots = dots,
+        dots = mastDots + dots,
         circles = circles,
         lines = ocidLines,
         focus = MapFocus.Around(e.latitude, e.longitude, radiusM = 1_000.0),
@@ -538,6 +560,49 @@ private fun EndcSection(station: BaseStation) {
 
 /** Farbe der OpenCelliD-Positionen auf der Karte */
 private val OcidColor = androidx.compose.ui.graphics.Color(0xFF7B3FB0)
+private val OsmMastColor = androidx.compose.ui.graphics.Color(0xFF3D4650)
+
+/** Nächster Funkmast aus OpenStreetMap. */
+@Composable
+private fun OsmSection(station: BaseStation, vm: ScannerViewModel) {
+    val progress by vm.osmProgress.collectAsStateWithLifecycle()
+    val e = station.estimate
+    val mast = station.osmMast
+    val d = station.osmMastDistanceM
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            when {
+                e == null -> tr("Ohne Standortschätzung lässt sich kein Mast zuordnen.", "No mast can be matched without a location estimate.")
+                mast != null && d != null -> tr("Nächster Funkmast: ${formatDistance(d)} entfernt", "Nearest radio mast: ${formatDistance(d)} away") +
+                    "\n" + mast.description + (mast.name?.let { " · $it" } ?: "") +
+                    if (d <= OsmMasts.CONFIRM_M) tr("\nBestätigt die Schätzung (≤ 100 m).", "\nConfirms the estimate (≤ 100 m).") else ""
+                progress?.running == true -> tr("Lade Funkmasten aus OpenStreetMap …", "Loading radio masts from OpenStreetMap …")
+                progress?.error != null && !station.osmChecked -> tr("Nicht geladen: ", "Not loaded: ") + progress?.error
+                station.osmChecked -> tr(
+                    "Kein Funkmast in OpenStreetMap im Umkreis von 1 km. Das spricht nicht gegen die Station: Dachstandorte sind dort selten eingetragen.",
+                    "No radio mast in OpenStreetMap within 1 km. That does not count against the station: rooftop sites are rarely mapped there.",
+                )
+                else -> tr("Noch nicht geladen.", "Not loaded yet.")
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            tr(
+                "Funkmasten und -türme, die Freiwillige in OpenStreetMap eingetragen haben (Dreiecke auf der Karte). " +
+                    "Die Positionen sind echte Maststandorte, aber ohne Cell-ID und unvollständig. Daten: © OpenStreetMap-Mitwirkende, ODbL.",
+                "Radio masts and towers mapped by volunteers in OpenStreetMap (triangles on the map). " +
+                    "The positions are real mast locations, but without cell IDs and incomplete. Data: © OpenStreetMap contributors, ODbL.",
+            ),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (e != null && progress?.running != true) {
+            OutlinedButton(onClick = { vm.loadOsmAround(e.latitude, e.longitude) }) {
+                Text(if (station.osmChecked) tr("Erneut prüfen", "Check again") else tr("Masten laden", "Load masts"))
+            }
+        }
+    }
+}
 
 /** Vergleich mit OpenCelliD: je Zelle gefunden/unbekannt, Position, Abstand zur eigenen Schätzung. */
 @Composable

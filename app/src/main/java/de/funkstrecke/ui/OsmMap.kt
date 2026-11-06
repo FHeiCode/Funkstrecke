@@ -52,7 +52,35 @@ data class MapDot(
     val onClick: (() -> Unit)? = null,
     /** Nur Ring statt gefülltem Punkt (z. B. mögliche Artefakte) */
     val hollow: Boolean = false,
+    /** Als Mast-Dreieck statt als Punkt zeichnen (OSM-Funkmasten) */
+    val mast: Boolean = false,
 )
+
+/** Dreieck mit weißem Rand: Symbol für einen Funkmast aus OpenStreetMap. */
+private fun mastDrawable(context: Context, color: Color, sizeDp: Int): android.graphics.drawable.Drawable {
+    val density = context.resources.displayMetrics.density
+    val px = (sizeDp * density).toInt().coerceAtLeast(8)
+    val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val stroke = 1.5f * density
+    val path = android.graphics.Path().apply {
+        moveTo(px / 2f, stroke)
+        lineTo(px - stroke, px - stroke)
+        lineTo(stroke, px - stroke)
+        close()
+    }
+    c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() })
+    c.drawPath(
+        path,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = stroke
+            this.color = android.graphics.Color.WHITE
+            strokeJoin = Paint.Join.ROUND
+        },
+    )
+    return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
+}
 
 /** Eine Linie auf der Karte (z. B. Grenze einer Tracking Area), Farbe als ARGB, Breite in dp. */
 data class CoverageLine(
@@ -223,6 +251,8 @@ fun OsmMap(
     coverage: List<CoverageRect> = emptyList(),
     /** Linien über den Feldern, z. B. Grenzen von Tracking Areas */
     lines: List<CoverageLine> = emptyList(),
+    /** Sichtbarer Ausschnitt nach Verschieben/Zoomen (verzögert): Süd, West, Nord, Ost */
+    onViewChanged: ((south: Double, west: Double, north: Double, east: Double) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -281,6 +311,25 @@ fun OsmMap(
             it.density = context.resources.displayMetrics.density
             mapView.overlays.add(0, it)
         }
+    }
+    val viewChanged = rememberUpdatedState(onViewChanged)
+    remember {
+        mapView.addMapListener(
+            org.osmdroid.events.DelayedMapListener(
+                object : org.osmdroid.events.MapListener {
+                    private fun report(): Boolean {
+                        val box = mapView.boundingBox
+                        viewChanged.value?.invoke(box.latSouth, box.lonWest, box.latNorth, box.lonEast)
+                        return false
+                    }
+
+                    override fun onScroll(event: org.osmdroid.events.ScrollEvent?) = report()
+
+                    override fun onZoom(event: org.osmdroid.events.ZoomEvent?) = report()
+                },
+                800,
+            ),
+        )
     }
     val longPress = rememberUpdatedState(onLongPress)
     remember {
@@ -355,7 +404,7 @@ fun OsmMap(
             dots.forEach { d ->
                 added += Marker(map).apply {
                     position = GeoPoint(d.latitude, d.longitude)
-                    icon = dotDrawable(context, d.color, d.sizeDp, d.hollow)
+                    icon = if (d.mast) mastDrawable(context, d.color, d.sizeDp) else dotDrawable(context, d.color, d.sizeDp, d.hollow)
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     title = d.title
                     snippet = d.snippet

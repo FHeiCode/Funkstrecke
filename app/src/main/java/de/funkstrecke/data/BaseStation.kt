@@ -79,6 +79,11 @@ data class BaseStation(
     val pciConflicts: List<PciConflict> = emptyList(),
     /** OpenCelliD-Ergebnisse der Zellen dieser Station */
     val ocid: List<OcidEntity> = emptyList(),
+    /** Nächster OSM-Funkmast (höchstens 1 km von der Schätzung) */
+    val osmMast: OsmMastEntity? = null,
+    val osmMastDistanceM: Double? = null,
+    /** OSM-Masten rund um die Schätzung wurden schon geladen */
+    val osmChecked: Boolean = false,
 ) {
     /** Bewertung: zuverlässig, Kandidat oder mögliches Artefakt (beste Zelle zählt) */
     val assessment: Assessment get() = assessStation(this)
@@ -171,11 +176,18 @@ fun buildStations(
     estimates: List<EstimateEntity>,
     centroids: List<CellCentroid> = emptyList(),
     ocid: List<OcidEntity> = emptyList(),
+    osm: OsmIndex = OsmIndex.EMPTY,
 ): List<BaseStation> {
     val ocidOf = ocid.associateBy { it.cellKey }
     return buildStationsCore(cells, estimates, centroids).map { s ->
         val results = s.cells.mapNotNull { ocidOf[it.id] }
-        if (results.isEmpty()) s else s.copy(ocid = results)
+        var out = if (results.isEmpty()) s else s.copy(ocid = results)
+        val e = s.estimate
+        if (e != null) {
+            val near = osm.nearest(e.latitude, e.longitude)
+            out = out.copy(osmMast = near?.first, osmMastDistanceM = near?.second, osmChecked = osm.covered(e.latitude, e.longitude))
+        }
+        out
     }
 }
 

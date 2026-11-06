@@ -9,6 +9,10 @@ import de.funkstrecke.data.CoverageTile
 import de.funkstrecke.data.EndcTile
 import de.funkstrecke.data.OcidProgress
 import de.funkstrecke.data.OpenCellId
+import de.funkstrecke.data.OsmIndex
+import de.funkstrecke.data.OsmMastEntity
+import de.funkstrecke.data.OsmMasts
+import de.funkstrecke.data.OsmProgress
 import de.funkstrecke.data.TaKey
 import de.funkstrecke.data.TrackingAreaMap
 import de.funkstrecke.data.buildTrackingAreas
@@ -41,6 +45,16 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val db = AppDatabase.get(app)
     private val dao = db.cellDao()
+    private val osmDao = db.osmDao()
+
+    /** OSM-Funkmasten im Zwischenspeicher */
+    val osmMasts: StateFlow<List<OsmMastEntity>> = osmDao.observeMasts()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val osmIndex: Flow<OsmIndex> = combine(
+        osmDao.observeMasts(),
+        osmDao.observeFreshTiles(System.currentTimeMillis() - OsmMasts.CACHE_DAYS * 24 * 3600 * 1000),
+    ) { masts, tiles -> OsmIndex(masts, tiles.toSet()) }
 
     init {
         // Einmalig nach dem Update auf Datenbankversion 4: Schätzungen ohne die falschen TA-Werte neu rechnen.
@@ -58,8 +72,9 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         dao.observeEstimates(),
         dao.observeCentroids(),
         dao.observeOcid(),
-    ) { cells, estimates, centroids, ocid ->
-        buildStations(cells, estimates, centroids, ocid)
+        osmIndex,
+    ) { cells, estimates, centroids, ocid, osm ->
+        buildStations(cells, estimates, centroids, ocid, osm)
     }
         .conflate()
         .flowOn(Dispatchers.Default)
@@ -151,6 +166,45 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _osmProgress = MutableStateFlow<OsmProgress?>(null)
+    /** Stand des Ladens von OSM-Masten; null = noch nichts geladen */
+    val osmProgress: StateFlow<OsmProgress?> = _osmProgress.asStateFlow()
+    private var osmJob: kotlinx.coroutines.Job? = null
+    private var osmPending: List<String>? = null
+
+    private fun loadOsm(tiles: List<String>) {
+        if (tiles.isEmpty()) return
+        if (osmJob?.isActive == true) {
+            osmPending = tiles
+            return
+        }
+        osmJob = viewModelScope.launch {
+            var next: List<String>? = tiles
+            while (next != null) {
+                osmPending = null
+                OsmMasts.ensure(db, next) { _osmProgress.value = it }
+                next = osmPending
+            }
+        }
+    }
+
+    /** OSM-Masten für einen Kartenausschnitt laden (nur bei ausreichend kleinem Ausschnitt). */
+    fun loadOsmView(south: Double, west: Double, north: Double, east: Double) {
+        val tiles = OsmMasts.tilesFor(south, west, north, east)
+        if (tiles.size <= OsmMasts.MAX_VIEW_TILES) loadOsm(tiles)
+    }
+
+    /** OSM-Masten im Umkreis einer Station laden. */
+    fun loadOsmAround(lat: Double, lon: Double) = loadOsm(OsmMasts.tilesAround(lat, lon, OsmMasts.SEARCH_M))
+
+    /** OSM-Masten rund um alle verorteten Stationen laden. */
+    fun loadOsmForAllStations() {
+        val tiles = stations.value.mapNotNull { it.estimate }
+            .flatMap { OsmMasts.tilesAround(it.latitude, it.longitude, OsmMasts.SEARCH_M) }
+            .distinct()
+        loadOsm(tiles)
+    }
+
     fun cancelOpenCellId() {
         ocidJob?.cancel()
         _ocidProgress.value = _ocidProgress.value?.copy(running = false, stopReason = tr("Abgebrochen", "Cancelled"))
@@ -173,7 +227,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 val cells = dao.allCells()
                 val estimates = dao.allEstimatesOnce()
                 // Bewertung je Zelle aus den Stationen (inkl. OpenCelliD-Abgleich)
-                val assessments = buildStations(cells, estimates, emptyList(), dao.allOcid())
+                val osm = OsmIndex(
+                    osmDao.allMasts(),
+                    osmDao.freshTiles(System.currentTimeMillis() - OsmMasts.CACHE_DAYS * 24 * 3600 * 1000).toSet(),
+                )
+                val assessments = buildStations(cells, estimates, emptyList(), dao.allOcid(), osm)
                     .flatMap { s -> s.cells.map { c -> c.id to de.funkstrecke.data.assessCell(s, c) } }
                     .toMap()
                 CsvExport.cellsCsv(cells, estimates, assessments)

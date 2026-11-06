@@ -75,6 +75,8 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     var confirmClear by remember { mutableStateOf(false) }
     val ocidKey by SettingsStore.openCellIdKey.collectAsStateWithLifecycle()
     val ocidProgress by vm.ocidProgress.collectAsStateWithLifecycle()
+    val osmProgress by vm.osmProgress.collectAsStateWithLifecycle()
+    var osmBulk by rememberSaveable { mutableStateOf(false) }
 
     val operators = remember(stations) { stations.map { it.operatorName ?: UNKNOWN_OPERATOR }.distinct().sorted() }
     val rats = remember(stations) { stations.map { it.rat }.distinct().sorted() }
@@ -141,6 +143,11 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             },
                             enabled = ocidKey.isNotBlank() && cellCount > 0 && ocidProgress?.running != true,
                             onClick = { menuOpen = false; vm.compareWithOpenCellId() },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(tr("Mit OpenStreetMap-Masten abgleichen", "Compare with OpenStreetMap masts")) },
+                            enabled = stations.any { it.estimate != null } && osmProgress?.running != true,
+                            onClick = { menuOpen = false; osmBulk = true; vm.loadOsmForAllStations() },
                         )
                         DropdownMenuItem(
                             text = { Text(tr("Alle Daten löschen", "Delete all data"), color = MaterialTheme.colorScheme.error) },
@@ -215,6 +222,27 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             ocidProgress?.let { p ->
                 item(key = "ocid") { OcidBanner(p, onCancel = { vm.cancelOpenCellId() }) }
+            }
+            osmProgress?.takeIf { osmBulk }?.let { p ->
+                item(key = "osm") {
+                    androidx.compose.material3.Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            when {
+                                p.running -> tr("OpenStreetMap: lade Gebiet ${p.done + 1} von ${p.total} …", "OpenStreetMap: loading area ${p.done + 1} of ${p.total} …")
+                                p.error != null -> tr("OpenStreetMap gestoppt: ${p.error}", "OpenStreetMap stopped: ${p.error}")
+                                p.total == 0 -> tr("OpenStreetMap: alle Gebiete sind schon geladen (gilt 30 Tage).", "OpenStreetMap: all areas already loaded (valid for 30 days).")
+                                else -> tr("OpenStreetMap fertig: ${p.masts} Masten in ${p.total} Gebieten.", "OpenStreetMap done: ${p.masts} masts in ${p.total} areas.")
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+                }
             }
             if (shown.isEmpty()) {
                 item {
@@ -411,7 +439,7 @@ private fun ReliabilitySummary(counts: Map<Reliability, Int>, selected: Reliabil
                 }
             }
             Text(
-                tr("Zuverlässig: Standort genauer als ±200 m oder höchstens 200 m von OpenCelliD entfernt. ", "Reliable: location better than ±200 m or at most 200 m from OpenCelliD. ") +
+                tr("Zuverlässig: Standort genauer als ±200 m, höchstens 200 m von OpenCelliD oder 100 m von einem OSM-Mast entfernt. ", "Reliable: location better than ±200 m, at most 200 m from OpenCelliD or 100 m from an OSM mast. ") +
                     tr("Kandidat: genauer als ±1 km. Übrige: mögliche Artefakte (kein oder sehr unsicherer Standort).", "Candidate: better than ±1 km. Others: potential artefacts (no or very uncertain location)."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
