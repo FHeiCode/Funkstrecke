@@ -49,6 +49,8 @@ data class MapDot(
     val title: String? = null,
     val snippet: String? = null,
     val onClick: (() -> Unit)? = null,
+    /** Nur Ring statt gefülltem Punkt (z. B. mögliche Artefakte) */
+    val hollow: Boolean = false,
 )
 
 /** Eine Linie auf der Karte (z. B. Grenze einer Tracking Area), Farbe als ARGB, Breite in dp. */
@@ -140,7 +142,17 @@ private fun positionBitmap(context: Context): Bitmap {
 
 private const val OWN_POSITION_RED = 0xFFE0201B.toInt()
 
-private fun dotDrawable(context: Context, color: Color, sizeDp: Int): GradientDrawable {
+private fun dotDrawable(context: Context, color: Color, sizeDp: Int, hollow: Boolean = false): GradientDrawable {
+    if (hollow) {
+        val density = context.resources.displayMetrics.density
+        val px = (sizeDp * density).toInt()
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(android.graphics.Color.argb(150, 255, 255, 255))
+            setStroke((2.5f * density).toInt().coerceAtLeast(2), color.toArgb())
+            setSize(px, px)
+        }
+    }
     val density = context.resources.displayMetrics.density
     val px = (sizeDp * density).toInt()
     return GradientDrawable().apply {
@@ -333,7 +345,7 @@ fun OsmMap(
             dots.forEach { d ->
                 added += Marker(map).apply {
                     position = GeoPoint(d.latitude, d.longitude)
-                    icon = dotDrawable(context, d.color, d.sizeDp)
+                    icon = dotDrawable(context, d.color, d.sizeDp, d.hollow)
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     title = d.title
                     snippet = d.snippet

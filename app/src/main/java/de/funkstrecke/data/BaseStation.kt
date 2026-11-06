@@ -76,6 +76,9 @@ data class BaseStation(
     /** OpenCelliD-Ergebnisse der Zellen dieser Station */
     val ocid: List<OcidEntity> = emptyList(),
 ) {
+    /** Bewertung: zuverlässig, Kandidat oder mögliches Artefakt (beste Zelle zählt) */
+    val assessment: Assessment get() = assessStation(this)
+
     /** Mittel der OpenCelliD-Positionen aller gefundenen Zellen */
     val ocidPosition: Pair<Double, Double>?
         get() {

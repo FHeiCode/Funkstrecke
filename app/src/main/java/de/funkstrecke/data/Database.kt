@@ -189,6 +189,9 @@ interface CellDao {
     @Query("SELECT * FROM opencellid")
     fun observeOcid(): Flow<List<OcidEntity>>
 
+    @Query("SELECT * FROM opencellid")
+    suspend fun allOcid(): List<OcidEntity>
+
     @Query("SELECT * FROM opencellid WHERE cellKey = :cellKey")
     suspend fun getOcid(cellKey: String): OcidEntity?
 

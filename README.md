@@ -42,6 +42,12 @@ Braucht die Freigabe „Telefon“. Die genaue Trägerkonfiguration (Physical Ch
 **OpenCelliD-Abgleich** – Mit einem kostenlosen API-Schlüssel von opencellid.org (Einstellungen → OpenCelliD) gleicht die App gefundene Zellen mit vollständiger Kennung (MCC, MNC, TAC/LAC, Cell-ID) ab: Stationsliste → ⋮ → „Mit OpenCelliD abgleichen“ oder einzeln in der Stationsansicht. Ergebnis je Station: „Nicht in OpenCelliD“ (neue oder nicht erfasste Zelle) oder der Abstand zwischen eigener Schätzung und OpenCelliD-Position; die OpenCelliD-Positionen erscheinen lila auf der Stationskarte. Anfragen sind gedrosselt (etwa eine pro Sekunde), Ergebnisse gelten 30 Tage; bei ungültigem Schlüssel oder erreichtem Tageslimit stoppt der Abgleich. Gesendet werden nur Zellkennungen, keine Positionen. Daten: OpenCelliD, CC BY-SA 4.0.
 Histogramm in der Stationsliste: Abstand je Zelle zwischen eigener Mast-Schätzung und OpenCelliD-Position (Klassen <50 m bis >2 km), mit Median und Anteil innerhalb des eigenen Unsicherheitskreises; folgt den Betreiber-/Technikfiltern, ein Tipp auf einen Balken filtert die Liste auf diese Klasse.
 
+**Bewertung** – jede erkannte Zelle wird eingestuft:
+- *zuverlässig*: eigene Standortschätzung genauer als 200 m (95-%-Radius) oder höchstens 200 m von der OpenCelliD-Position derselben Zelle entfernt
+- *Kandidat*: eigene Schätzung genauer als 1 km
+- *mögliches Artefakt*: alles Übrige (sehr ungenau oder gar nicht verortet)
+Eine Station übernimmt die beste Bewertung ihrer Zellen. Stationsliste: Übersicht mit Balken und Zählern (antippen filtert), Plakette an jeder Station. Karte: zuverlässig = kräftiger Punkt mit Kreis, Kandidat = blasser Punkt, Artefakt = leerer Ring (standardmäßig ausgeblendet, per Chip zuschaltbar). Stationsansicht: Begründung und Spalte „Bewertung“ je Zelle; CSV-Export mit „Bewertung“ und „Begründung“.
+
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt
 - Timing-Advance-Werte als zusätzliche Abstandsmessungen

@@ -1,6 +1,7 @@
 package de.funkstrecke.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.CoverageCell
+import de.funkstrecke.data.Reliability
 import de.funkstrecke.data.coverageFor
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
@@ -177,23 +179,49 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     }
 
     // Stationen: Kreise nur, wenn sie aussagekräftig sind; sehr grobe Schätzungen würden die Karte zudecken.
-    val circles = remember(located) {
-        located.mapNotNull { s ->
-            val e = s.estimate!!
-            if (e.radiusM > 2_000) null else MapCircle(e.latitude, e.longitude, e.radiusM, operatorColorRaw(s.operatorName))
+    // Bewertung: zuverlässig = gefüllter Punkt mit Kreis, Kandidat = kleiner, halbtransparent mit Kreis,
+    // mögliches Artefakt = nur Ring ohne Kreis (standardmäßig ausgeblendet).
+    var showCandidates by rememberSaveable { mutableStateOf(true) }
+    var showArtefacts by rememberSaveable { mutableStateOf(false) }
+    val assessed = remember(located) { located.map { it to it.assessment } }
+    val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
+    val visible = remember(assessed, showCandidates, showArtefacts) {
+        assessed.filter { (_, a) ->
+            when (a.reliability) {
+                Reliability.RELIABLE -> true
+                Reliability.CANDIDATE -> showCandidates
+                Reliability.ARTEFACT -> showArtefacts
+            }
         }
     }
-    val dots = remember(located) {
-        located.map { s ->
+    val circles = remember(visible) {
+        visible.mapNotNull { (s, a) ->
             val e = s.estimate!!
+            if (a.reliability == Reliability.ARTEFACT || e.radiusM > 2_000) {
+                null
+            } else {
+                val c = operatorColorRaw(s.operatorName)
+                MapCircle(e.latitude, e.longitude, e.radiusM, if (a.reliability == Reliability.RELIABLE) c else c.copy(alpha = 0.5f))
+            }
+        }
+    }
+    val dots = remember(visible) {
+        visible.map { (s, a) ->
+            val e = s.estimate!!
+            val c = operatorColorRaw(s.operatorName)
             MapDot(
                 latitude = e.latitude,
                 longitude = e.longitude,
-                color = operatorColorRaw(s.operatorName),
-                sizeDp = 16,
-                title = s.title,
-                snippet = "${s.operatorName ?: "Unbekannt"} · ±${formatDistance(e.radiusM)}",
+                color = if (a.reliability == Reliability.CANDIDATE) c.copy(alpha = 0.6f) else c,
+                sizeDp = when (a.reliability) {
+                    Reliability.RELIABLE -> 18
+                    Reliability.CANDIDATE -> 14
+                    Reliability.ARTEFACT -> 12
+                },
+                title = "${s.title} · ${a.reliability.label}",
+                snippet = "${s.operatorName ?: "Unbekannt"} · ${a.reason}",
                 onClick = { onOpen(s.key) },
+                hollow = a.reliability == Reliability.ARTEFACT,
             )
         }
     }
@@ -267,6 +295,28 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             shape = SegmentedButtonDefaults.itemShape(index = i, count = MapMode.entries.size),
                             colors = SegmentedButtonDefaults.colors(inactiveContainerColor = MaterialTheme.colorScheme.surface),
                         ) { Text(m.label) }
+                    }
+                }
+                if (mode == MapMode.STATIONS && located.isNotEmpty()) {
+                    ChipBar {
+                        FilterChip(
+                            selected = true,
+                            onClick = {},
+                            label = { Text("${Reliability.RELIABLE.label} ${reliabilityCounts[Reliability.RELIABLE] ?: 0}") },
+                            leadingIcon = { ReliabilityDot(Reliability.RELIABLE) },
+                        )
+                        FilterChip(
+                            selected = showCandidates,
+                            onClick = { showCandidates = !showCandidates },
+                            label = { Text("Kandidaten ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}") },
+                            leadingIcon = { ReliabilityDot(Reliability.CANDIDATE) },
+                        )
+                        FilterChip(
+                            selected = showArtefacts,
+                            onClick = { showArtefacts = !showArtefacts },
+                            label = { Text("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}") },
+                            leadingIcon = { ReliabilityDot(Reliability.ARTEFACT) },
+                        )
                     }
                 }
                 if (mode == MapMode.TRACKING && taOperators.isNotEmpty()) {
@@ -512,4 +562,23 @@ private fun TrackingLegend(map: de.funkstrecke.data.TrackingAreaMap, colors: Map
             )
         }
     }
+}
+
+/** Kleines Symbol wie auf der Karte: gefüllt, halbtransparent oder Ring. */
+@Composable
+private fun ReliabilityDot(r: Reliability) {
+    val color = de.funkstrecke.ui.theme.reliabilityColor(r)
+    val shape = androidx.compose.foundation.shape.CircleShape
+    Box(
+        Modifier
+            .size(12.dp)
+            .clip(shape)
+            .then(
+                when (r) {
+                    Reliability.RELIABLE -> Modifier.background(color)
+                    Reliability.CANDIDATE -> Modifier.background(color.copy(alpha = 0.45f))
+                    Reliability.ARTEFACT -> Modifier.border(2.dp, color, shape)
+                },
+            ),
+    )
 }

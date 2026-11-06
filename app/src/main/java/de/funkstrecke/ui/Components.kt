@@ -1,6 +1,7 @@
 package de.funkstrecke.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -102,5 +103,26 @@ fun KeyValue(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.bodyMedium, fontFamily = FontFamily.Monospace)
+    }
+}
+
+/** Kennzeichnung der Bewertung: gefüllt (zuverlässig), getönt (Kandidat), umrandet (mögliches Artefakt). */
+@Composable
+fun ReliabilityPill(r: de.funkstrecke.data.Reliability, modifier: Modifier = Modifier) {
+    val color = de.funkstrecke.ui.theme.reliabilityColor(r)
+    val shape = androidx.compose.foundation.shape.RoundedCornerShape(50)
+    val base = modifier.clip(shape)
+    val styled = when (r) {
+        de.funkstrecke.data.Reliability.RELIABLE -> base.background(color)
+        de.funkstrecke.data.Reliability.CANDIDATE -> base.background(color.copy(alpha = 0.18f))
+        de.funkstrecke.data.Reliability.ARTEFACT -> base.border(1.dp, color, shape)
+    }
+    Box(styled.padding(horizontal = 8.dp, vertical = 2.dp)) {
+        Text(
+            r.label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (r == de.funkstrecke.data.Reliability.RELIABLE) androidx.compose.ui.graphics.Color.White else color,
+        )
     }
 }

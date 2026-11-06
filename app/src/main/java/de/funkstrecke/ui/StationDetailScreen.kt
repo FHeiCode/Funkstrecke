@@ -120,6 +120,12 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 Spacer(Modifier.width(6.dp))
                 Text(station.operatorName ?: "Unbekannter Betreiber", style = MaterialTheme.typography.titleMedium)
             }
+            val assessment = station.assessment
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ReliabilityPill(assessment.reliability)
+                Spacer(Modifier.width(8.dp))
+                Text(assessment.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
 
             Section("Kennung") {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -222,7 +228,7 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
             }
 
             Section(if (station.cells.size == 1) "Zelle" else "Zellen (${station.cells.size})") {
-                CellTable(station.rat, station.cells)
+                CellTable(station.rat, station.cells, station)
             }
 
             if (station.linked.isNotEmpty()) {
@@ -290,14 +296,14 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
 }
 
 @Composable
-private fun CellTable(rat: String, cells: List<CellEntity>) {
+private fun CellTable(rat: String, cells: List<CellEntity>, station: BaseStation) {
     val groups = supportsPciGroups(rat)
     val headers = listOf(
         if (rat == "4G") "Sektor" else "Nr.",
         if (rat == "5G") "NCI" else if (rat == "4G") "ECI" else "CID",
         if (rat == "3G") "PSC" else if (rat == "2G") "BSIC" else "PCI",
         if (groups) "SSS/PSS" else "",
-        "Band", "ARFCN", "max dBm", "Scans",
+        "Band", "ARFCN", "max dBm", "Scans", "Bewertung",
     )
     val rows = cells.mapIndexed { i, c ->
         listOf(
@@ -309,9 +315,10 @@ private fun CellTable(rat: String, cells: List<CellEntity>) {
             c.arfcn?.toString() ?: "–",
             c.bestDbm?.toString() ?: "–",
             if (c.servingSamples > 0) "${c.samples} (${c.servingSamples}×v)" else c.samples.toString(),
+            de.funkstrecke.data.assessCell(station, c).reliability.short,
         )
     }
-    val widths = listOf(56, 110, 56, if (groups) 72 else 0, 130, 72, 72, 96)
+    val widths = listOf(56, 110, 56, if (groups) 72 else 0, 130, 72, 72, 96, 72)
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),

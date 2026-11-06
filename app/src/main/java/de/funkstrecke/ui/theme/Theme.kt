@@ -106,3 +106,13 @@ fun signalColor(level: Int): Color = adaptive(signalColorRaw(level))
 @Composable
 private fun adaptive(base: Color): Color =
     if (isSystemInDarkTheme()) lerp(base, Color.White, 0.38f) else base
+
+/** Farbe der Bewertung: zuverlässig grün, Kandidat bernstein, mögliches Artefakt grau. */
+fun reliabilityColorRaw(r: de.funkstrecke.data.Reliability): Color = when (r) {
+    de.funkstrecke.data.Reliability.RELIABLE -> Color(0xFF237A4B)
+    de.funkstrecke.data.Reliability.CANDIDATE -> Color(0xFFB07A00)
+    de.funkstrecke.data.Reliability.ARTEFACT -> Color(0xFF7A8690)
+}
+
+@Composable
+fun reliabilityColor(r: de.funkstrecke.data.Reliability): Color = adaptive(reliabilityColorRaw(r))

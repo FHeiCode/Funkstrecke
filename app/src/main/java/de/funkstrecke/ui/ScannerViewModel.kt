@@ -168,7 +168,15 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     fun exportCells() {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val csv = withContext(Dispatchers.IO) { CsvExport.cellsCsv(dao.allCells(), dao.allEstimatesOnce()) }
+            val csv = withContext(Dispatchers.IO) {
+                val cells = dao.allCells()
+                val estimates = dao.allEstimatesOnce()
+                // Bewertung je Zelle aus den Stationen (inkl. OpenCelliD-Abgleich)
+                val assessments = buildStations(cells, estimates, emptyList(), dao.allOcid())
+                    .flatMap { s -> s.cells.map { c -> c.id to de.funkstrecke.data.assessCell(s, c) } }
+                    .toMap()
+                CsvExport.cellsCsv(cells, estimates, assessments)
+            }
             CsvExport.share(app, "zellen", csv)
         }
     }

@@ -4,6 +4,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -47,6 +54,7 @@ import de.funkstrecke.data.BaseStation
 import de.funkstrecke.ui.theme.signalColor
 import de.funkstrecke.ui.theme.signalLevel
 import de.funkstrecke.util.formatAgo
+import de.funkstrecke.data.Reliability
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatDistance
 
@@ -79,13 +87,16 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val deviations = remember(filtered) { ocidDeviations(filtered) }
     val ocidNotFound = remember(filtered) { filtered.sumOf { s -> s.ocid.count { it.status == de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND } } }
     var ocidBin by rememberSaveable { mutableStateOf<Int?>(null) }
+    var reliabilityFilter by rememberSaveable { mutableStateOf<Reliability?>(null) }
+    val reliabilityCounts = remember(filtered) { filtered.groupingBy { it.assessment.reliability }.eachCount() }
     val binStations = remember(deviations, ocidBin) {
         ocidBin?.let { b -> deviations.filter { ocidBinOf(it.distanceM) == b }.map { it.stationKey }.toSet() }
     }
-    val shown = remember(filtered, query, binStations) {
+    val shown = remember(filtered, query, binStations, reliabilityFilter) {
         val q = query.trim().lowercase()
         filtered.filter { s ->
             (binStations == null || s.key in binStations) &&
+                (reliabilityFilter == null || s.assessment.reliability == reliabilityFilter) &&
                 (
                     q.isEmpty() || s.title.lowercase().contains(q) ||
                         (s.plmn ?: "").contains(q) ||
@@ -193,6 +204,9 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     }
                 }
             }
+            item(key = "reliability") {
+                ReliabilitySummary(reliabilityCounts, reliabilityFilter, onSelect = { reliabilityFilter = it })
+            }
             if (deviations.isNotEmpty() || ocidNotFound > 0) {
                 item(key = "ocid-histogram") {
                     OcidHistogramCard(deviations, ocidNotFound, ocidBin, onSelectBin = { ocidBin = it })
@@ -236,7 +250,17 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
             RatBadge(station.rat)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(station.title, style = MaterialTheme.typography.titleMedium, fontFamily = FontFamily.Monospace)
+                val assessment = station.assessment
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        station.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    ReliabilityPill(assessment.reliability)
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OperatorDot(station.operatorName)
                     Spacer(Modifier.width(6.dp))
@@ -329,6 +353,68 @@ private fun OcidBanner(p: de.funkstrecke.data.OcidProgress, onCancel: () -> Unit
                 modifier = Modifier.weight(1f),
             )
             if (p.running) TextButton(onClick = onCancel) { Text("Abbrechen") }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+/**
+ * Übersicht der Bewertungen als gestapelter Balken mit Zählern. Die Zähler sind zugleich Filter:
+ * Antippen zeigt nur Stationen dieser Bewertung, erneutes Antippen hebt den Filter auf.
+ */
+@Composable
+private fun ReliabilitySummary(counts: Map<Reliability, Int>, selected: Reliability?, onSelect: (Reliability?) -> Unit) {
+    val total = counts.values.sum()
+    if (total == 0) return
+    OutlinedCard(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Bewertung der Stationen", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(5.dp)),
+            ) {
+                Reliability.entries.forEach { r ->
+                    val n = counts[r] ?: 0
+                    if (n > 0) {
+                        Box(
+                            Modifier
+                                .weight(n.toFloat())
+                                .fillMaxHeight()
+                                .background(
+                                    de.funkstrecke.ui.theme.reliabilityColor(r)
+                                        .copy(alpha = if (selected == null || selected == r) 1f else 0.3f),
+                                ),
+                        )
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Reliability.entries.forEach { r ->
+                    val n = counts[r] ?: 0
+                    FilterChip(
+                        selected = selected == r,
+                        enabled = n > 0 || selected == r,
+                        onClick = { onSelect(if (selected == r) null else r) },
+                        label = { Text("${r.label} $n") },
+                        leadingIcon = {
+                            Box(
+                                Modifier
+                                    .size(10.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(de.funkstrecke.ui.theme.reliabilityColor(r)),
+                            )
+                        },
+                    )
+                }
+            }
+            Text(
+                "Zuverlässig: Standort genauer als ±200 m oder höchstens 200 m von OpenCelliD entfernt. " +
+                    "Kandidat: genauer als ±1 km. Übrige: mögliche Artefakte (kein oder sehr unsicherer Standort).",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

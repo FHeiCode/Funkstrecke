@@ -27,7 +27,11 @@ object CsvExport {
     private fun num(value: Number?): String = value?.toString()?.replace('.', ',') ?: ""
     private fun str(value: Any?): String = value?.toString() ?: ""
 
-    fun cellsCsv(cells: List<CellEntity>, estimates: List<EstimateEntity>): String {
+    fun cellsCsv(
+        cells: List<CellEntity>,
+        estimates: List<EstimateEntity>,
+        assessments: Map<String, de.funkstrecke.data.Assessment> = emptyMap(),
+    ): String {
         val byGroup = estimates.associateBy { it.groupKey }
         val header = listOf(
             "Technik", "Betreiber", "MCC", "MNC", "MCC/MNC abgeleitet", "TAC/LAC", "Cell-ID", "eNB-ID", "Sektor",
@@ -36,6 +40,7 @@ object CsvExport {
             "Davon verbunden", "Station", "Geschätzte Breite", "Geschätzte Länge", "Radius (m)", "Methode",
             "Erstmals gesehen", "Zuletzt gesehen",
             "EN-DC verbunden (Scans)", "EN-DC verfügbar (Scans)", "NR-Zweig von Station",
+            "Bewertung", "Begründung",
         )
         val rows = cells.sortedWith(compareBy({ it.groupKey }, { it.sector ?: 0 })).map { c ->
             val e = byGroup[c.groupKey]
@@ -50,6 +55,7 @@ object CsvExport {
                 num(e?.latitude), num(e?.longitude), num(e?.radiusM?.toInt()), e?.method ?: "",
                 formatDateTimeSeconds(c.firstSeen), formatDateTimeSeconds(c.lastSeen),
                 c.endcConnectedSamples.toString(), c.endcAvailableSamples.toString(), c.nrAnchorKey ?: "",
+                assessments[c.id]?.reliability?.label ?: "", assessments[c.id]?.reason ?: "",
             )
         }
         return build(header, rows)
