@@ -20,6 +20,8 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 
 **Pause** – Im Live-Tab „Pausieren …“ (bzw. „Automatik pausieren …“ bei aktiver Heimatbasis): 15 min, 30 min, 1 h, 2 h oder bis zum Fortsetzen. Während der Pause sind GPS und Zell-Scans aus, die Live-Ansicht ruht und die Heimatbasis startet keine Aufzeichnung. Danach geht es von selbst weiter. In der Benachrichtigung gibt es „Pause 30 min“ und „Fortsetzen“.
 
+**Sprache** (Einstellungen → Sprache) – Systemsprache (Deutsch bei deutschem Gerät, sonst Englisch), Deutsch oder English. Gilt für Oberfläche, Benachrichtigungen und CSV-Spaltennamen.
+
 **Einstellungen** (Zahnrad im Live-Tab) – Energiemodus *Genau* (alle 3 s), *Ausgewogen* (alle 10 s ab 15 m Bewegung, Standard) oder *Sparsam* (alle 30 s ab 50 m, Modem-Zwischenspeicher), oder einzeln: Scan-Intervall, Mindestabstand, Live-Takt, frische Messung an/aus. GPS wird nur so oft abgefragt, wie gescannt wird.
 
 **Telefonate & Datenverkehr** (Einstellungen) – Zell-Scans bitten das Modem um zusätzliche Messungen, was während eines Gesprächs oder großer Downloads auf manchen Geräten stören kann. Funkstrecke erkennt Telefonate (auch VoLTE und WLAN-Call) über den Audio-Modus und starken mobilen Datenverkehr (ab etwa 256 kbit/s) über die Datenzähler. Je Fall einstellbar: *pausieren*, *nur mitlesen* (keine Messanforderung an das Modem) oder *weiter scannen*. Standard: Telefonat → pausieren, Datenverkehr → nur mitlesen (aktive Datenverbindungen liefern Timing Advance).
