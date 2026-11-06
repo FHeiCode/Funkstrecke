@@ -95,6 +95,17 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück", "Back")) }
                 },
                 actions = {
+                    val emfAt = station?.takeIf { it.mcc == null || it.mcc == "262" }
+                        ?.let { s -> s.estimate?.let { it.latitude to it.longitude } ?: s.ocidPosition }
+                    if (emfAt != null) {
+                        IconButton(onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(EmfMap.url(emfAt.first, emfAt.second))))
+                            }
+                        }) {
+                            Icon(Icons.Filled.CellTower, contentDescription = tr("Amtliche Standorte (EMF-Karte)", "Official sites (EMF map)"))
+                        }
+                    }
                     if (station != null && measurements.isNotEmpty()) {
                         IconButton(onClick = { vm.recompute(station) }) {
                             Icon(Icons.Filled.Refresh, contentDescription = tr("Standort neu berechnen", "Recalculate location"))

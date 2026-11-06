@@ -121,6 +121,12 @@ private class CoverageOverlay : Overlay() {
     }
 }
 
+/** Zugriff auf die aktuelle Mitte einer [OsmMap], z. B. um eine andere Karte dort zu öffnen. */
+class MapCenterHandle {
+    var provider: (() -> Pair<Double, Double>)? = null
+    val center: Pair<Double, Double>? get() = provider?.invoke()
+}
+
 /** Ein Unsicherheitskreis (Standortschätzung); mit [sector] nur der Kreissektor in diese Richtung. */
 data class MapCircle(
     val latitude: Double,
@@ -230,6 +236,8 @@ fun OsmMap(
     coverage: List<CoverageRect> = emptyList(),
     /** Linien über den Feldern, z. B. Grenzen von Tracking Areas */
     lines: List<CoverageLine> = emptyList(),
+    /** Liefert auf Abruf die aktuelle Kartenmitte */
+    centerHandle: MapCenterHandle? = null,
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -343,6 +351,8 @@ fun OsmMap(
             MapFocus.FitAll -> Unit
         }
     }
+
+    centerHandle?.provider = { mapView.mapCenter.latitude to mapView.mapCenter.longitude }
 
     AndroidView(
         factory = { mapView },

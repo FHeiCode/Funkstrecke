@@ -1,5 +1,7 @@
 package de.funkstrecke.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
@@ -18,8 +20,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +58,7 @@ import de.funkstrecke.data.coverageFor
 import de.funkstrecke.data.ocidSector
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
+import de.funkstrecke.util.EmfMap
 import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.formatDistance
@@ -118,6 +123,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val context = LocalContext.current
     val canLocate = remember { LocationHelper.hasPermission(context) }
     var recenterKey by rememberSaveable { mutableIntStateOf(0) }
+    val centerHandle = remember { MapCenterHandle() }
     var mode by rememberSaveable { mutableStateOf(MapMode.STATIONS) }
 
     var coverageView by rememberSaveable { mutableStateOf(CoverageView.SIGNAL) }
@@ -294,6 +300,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 },
                 lines = if (mode == MapMode.TRACKING) taLines else emptyList(),
                 modifier = Modifier.fillMaxSize(),
+                centerHandle = centerHandle,
                 focus = MapFocus.OwnPosition(radiusM = 1_000.0),
                 recenterKey = recenterKey,
             )
@@ -420,14 +427,31 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 )
             }
 
-            if (canLocate) {
-                SmallFloatingActionButton(
-                    onClick = { recenterKey++ },
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(16.dp),
-                ) {
-                    Icon(Icons.Filled.MyLocation, contentDescription = tr("Auf meine Position zentrieren", "Center on my position"))
+            Column(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                if (mode == MapMode.STATIONS) {
+                    val context = LocalContext.current
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            centerHandle.center?.let { (lat, lon) ->
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(EmfMap.url(lat, lon))))
+                                }
+                            }
+                        },
+                        icon = { Icon(Icons.Filled.CellTower, contentDescription = null) },
+                        text = { Text(tr("EMF-Karte", "EMF map")) },
+                    )
+                }
+                if (canLocate) {
+                    SmallFloatingActionButton(onClick = { recenterKey++ }) {
+                        Icon(Icons.Filled.MyLocation, contentDescription = tr("Auf meine Position zentrieren", "Center on my position"))
+                    }
                 }
             }
         }

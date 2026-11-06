@@ -21,7 +21,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = if (runNumber != null) 100 + runNumber else 4
-        versionName = tagName?.removePrefix("v") ?: if (runNumber != null) "2.18-build$runNumber" else "2.18"
+        versionName = tagName?.removePrefix("v") ?: if (runNumber != null) "2.19-build$runNumber" else "2.19"
     }
 
     signingConfigs {
