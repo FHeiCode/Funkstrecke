@@ -17,6 +17,13 @@ const val RELIABLE_RADIUS_M = 200.0
 const val OCID_MATCH_M = 200.0
 const val CANDIDATE_RADIUS_M = 1_000.0
 
+/** OpenCelliD-Treffer, die weiter als ihre Reichweite, mindestens aber so weit entfernt liegen, gelten als unplausibel */
+const val OCID_IMPLAUSIBLE_MIN_M = 5_000.0
+/** Treffer mit weniger Messungen … */
+const val OCID_FEW_SAMPLES = 3
+/** … gelten ab diesem Abstand als unplausibel */
+const val OCID_FEW_SAMPLES_MAX_M = 1_000.0
+
 enum class Reliability {
     RELIABLE,
     CANDIDATE,
@@ -45,7 +52,7 @@ private fun m(v: Double) = formatDistance(v)
 /** Bewertung einer Zelle anhand der Schätzung ihrer Station und ihres OpenCelliD-Eintrags. */
 fun assessCell(station: BaseStation, cell: CellEntity): Assessment {
     val e = station.estimate
-    val o = station.ocid.firstOrNull { it.cellKey == cell.id && it.found && it.latitude != null && it.longitude != null }
+    val o = station.ocidPlausible.firstOrNull { it.cellKey == cell.id }
     val ocidDistance = if (e != null && o != null) distanceM(e.latitude, e.longitude, o.latitude!!, o.longitude!!) else null
     return when {
         e != null && e.radiusM < RELIABLE_RADIUS_M ->
@@ -71,7 +78,7 @@ fun assessStation(station: BaseStation): Assessment =
 /** Unter diesem Abstand zur eigenen Schätzung wird keine Verbindungslinie zu OpenCelliD gezeichnet. */
 const val OCID_LINE_MIN_M = 30.0
 
-/** In OpenCelliD gefundene Zellen einer Station mit Position, je Zelle (für Verbindungslinien auf der Karte). */
+/** In OpenCelliD gefundene Zellen einer Station mit Position, je Zelle (für Verbindungslinien auf der Karte); auch unplausible. */
 fun ocidTargets(station: BaseStation): List<OcidEntity> {
     val e = station.estimate ?: return emptyList()
     return station.ocid.filter {

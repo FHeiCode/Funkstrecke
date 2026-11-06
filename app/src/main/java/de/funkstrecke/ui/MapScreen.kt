@@ -281,19 +281,21 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val ocidLines = remember(ocidPairs) {
         ocidPairs.map { (s, o) ->
             val e = s.estimate!!
-            CoverageLine(e.latitude, e.longitude, o.latitude!!, o.longitude!!, OcidPurple.toArgb(), 1.5f, dashed = true)
+            val bad = s.ocidImplausibleReason(o) != null
+            CoverageLine(e.latitude, e.longitude, o.latitude!!, o.longitude!!, (if (bad) OcidImplausibleGrey else OcidPurple).toArgb(), 1.5f, dashed = true)
         }
     }
     val ocidDots = remember(ocidPairs) {
         ocidPairs.map { (s, o) ->
             val cell = s.cells.firstOrNull { it.id == o.cellKey }
+            val bad = s.ocidImplausibleReason(o)
             MapDot(
                 latitude = o.latitude!!,
                 longitude = o.longitude!!,
-                color = OcidPurple,
+                color = if (bad != null) OcidImplausibleGrey else OcidPurple,
                 sizeDp = 10,
-                title = "OpenCelliD · ${s.title}",
-                snippet = tr("Sektor", "Sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}",
+                title = "OpenCelliD · ${s.title}" + if (bad != null) tr(" · unplausibel", " · implausible") else "",
+                snippet = tr("Sektor", "Sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}" + (bad?.let { " · $it" } ?: ""),
                 onClick = { onOpen(s.key) },
                 hollow = true,
             )
@@ -527,6 +529,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 }
 
 private val OcidPurple = Color(0xFF7B3FB0)
+private val OcidImplausibleGrey = Color(0xFF8A8F96)
 private val OsmMastColor = Color(0xFF3D4650)
 
 @Composable

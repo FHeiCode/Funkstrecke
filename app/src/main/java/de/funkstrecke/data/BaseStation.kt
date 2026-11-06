@@ -1,6 +1,7 @@
 package de.funkstrecke.data
 
 import de.funkstrecke.radio.Operators
+import de.funkstrecke.util.formatDistance
 import de.funkstrecke.util.tr
 import kotlin.math.PI
 import kotlin.math.cos
@@ -88,10 +89,42 @@ data class BaseStation(
     /** Bewertung: zuverlässig, Kandidat oder mögliches Artefakt (beste Zelle zählt) */
     val assessment: Assessment get() = assessStation(this)
 
-    /** Mittel der OpenCelliD-Positionen aller gefundenen Zellen */
+    /**
+     * Grund, warum ein OpenCelliD-Treffer unplausibel ist, sonst null: weiter entfernt als die von
+     * OpenCelliD angegebene Reichweite (mindestens [OCID_IMPLAUSIBLE_MIN_M]) oder auf weniger als
+     * [OCID_FEW_SAMPLES] Messungen beruhend und über [OCID_FEW_SAMPLES_MAX_M] entfernt.
+     */
+    fun ocidImplausibleReason(o: OcidEntity): String? {
+        val e = estimate ?: return null
+        if (!o.found || o.latitude == null || o.longitude == null) return null
+        val d = distanceM(e.latitude, e.longitude, o.latitude, o.longitude)
+        val limit = maxOf(OCID_IMPLAUSIBLE_MIN_M, (o.rangeM ?: 0).toDouble())
+        val samples = o.samples
+        return when {
+            d > limit -> tr(
+                "${formatDistance(d)} entfernt, mehr als die Reichweite laut OpenCelliD",
+                "${formatDistance(d)} away, more than the range given by OpenCelliD",
+            )
+            samples != null && samples < OCID_FEW_SAMPLES && d > OCID_FEW_SAMPLES_MAX_M -> tr(
+                "${formatDistance(d)} entfernt, nur $samples ${if (samples == 1) "Messung" else "Messungen"}",
+                "${formatDistance(d)} away, only $samples ${if (samples == 1) "measurement" else "measurements"}",
+            )
+            else -> null
+        }
+    }
+
+    /** In OpenCelliD gefundene Zellen mit Position, ohne unplausible Treffer */
+    val ocidPlausible: List<OcidEntity>
+        get() = ocid.filter { it.found && it.latitude != null && it.longitude != null && ocidImplausibleReason(it) == null }
+
+    /** Gefundene, aber unplausible Treffer */
+    val ocidImplausible: List<OcidEntity>
+        get() = ocid.filter { it.found && it.latitude != null && it.longitude != null && ocidImplausibleReason(it) != null }
+
+    /** Mittel der OpenCelliD-Positionen aller plausiblen Treffer */
     val ocidPosition: Pair<Double, Double>?
         get() {
-            val f = ocid.filter { it.found && it.latitude != null && it.longitude != null }
+            val f = ocidPlausible
             if (f.isEmpty()) return null
             return f.map { it.latitude!! }.average() to f.map { it.longitude!! }.average()
         }

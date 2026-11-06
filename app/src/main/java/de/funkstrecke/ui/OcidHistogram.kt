@@ -54,7 +54,7 @@ fun ocidBinOf(distanceM: Double): Int = binEdges.indexOfFirst { distanceM < it }
 
 fun ocidDeviations(stations: List<BaseStation>): List<OcidDeviation> = stations.flatMap { s ->
     val e = s.estimate ?: return@flatMap emptyList()
-    s.ocid.filter { it.found && it.latitude != null && it.longitude != null }.map { o ->
+    s.ocidPlausible.map { o ->
         val d = distanceM(e.latitude, e.longitude, o.latitude!!, o.longitude!!)
         OcidDeviation(s.key, o.cellKey, d, d <= e.radiusM)
     }
@@ -68,6 +68,7 @@ fun ocidDeviations(stations: List<BaseStation>): List<OcidDeviation> = stations.
 fun OcidHistogramCard(
     deviations: List<OcidDeviation>,
     notFoundCells: Int,
+    implausibleCells: Int,
     selectedBin: Int?,
     onSelectBin: (Int?) -> Unit,
 ) {
@@ -170,6 +171,16 @@ fun OcidHistogramCard(
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (implausibleCells > 0) {
+                Text(
+                    if (implausibleCells == 1) {
+                        tr("1 unplausibler Treffer nicht berücksichtigt (zu weit entfernt)", "1 implausible match not counted (too far away)")
+                    } else {
+                        tr("$implausibleCells unplausible Treffer nicht berücksichtigt (zu weit entfernt)", "$implausibleCells implausible matches not counted (too far away)")
+                    },
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
             if (notFoundCells > 0) {

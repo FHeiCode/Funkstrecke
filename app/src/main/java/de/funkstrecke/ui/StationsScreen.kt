@@ -88,6 +88,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
         }
     }
     val deviations = remember(filtered) { ocidDeviations(filtered) }
+    val ocidImplausible = remember(filtered) { filtered.sumOf { it.ocidImplausible.size } }
     val ocidNotFound = remember(filtered) { filtered.sumOf { s -> s.ocid.count { it.status == de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND } } }
     var ocidBin by rememberSaveable { mutableStateOf<Int?>(null) }
     var reliabilityFilter by rememberSaveable { mutableStateOf<Reliability?>(null) }
@@ -217,7 +218,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             if (deviations.isNotEmpty() || ocidNotFound > 0) {
                 item(key = "ocid-histogram") {
-                    OcidHistogramCard(deviations, ocidNotFound, ocidBin, onSelectBin = { ocidBin = it })
+                    OcidHistogramCard(deviations, ocidNotFound, ocidImplausible, ocidBin, onSelectBin = { ocidBin = it })
                 }
             }
             ocidProgress?.let { p ->
@@ -331,6 +332,11 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                         tr("In OpenCelliD bekannt", "Known in OpenCelliD"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    station.ocidImplausible.isNotEmpty() -> Text(
+                        tr("OpenCelliD unplausibel", "OpenCelliD implausible"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary,
                     )
                 }
                 if (station.pciConflicts.isNotEmpty()) {

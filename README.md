@@ -51,6 +51,7 @@ Histogramm in der Stationsliste: Abstand je Zelle zwischen eigener Mast-Schätzu
 - *Kandidat*: eigene Schätzung genauer als 1 km
 - *mögliches Artefakt*: alles Übrige (sehr ungenau oder gar nicht verortet)
 Eine Station übernimmt die beste Bewertung ihrer Zellen. Stationsliste: Übersicht mit Balken und Zählern (antippen filtert), Plakette an jeder Station. Karte: zuverlässig = kräftiger Punkt mit Kreis, Kandidat = blasser Punkt, Artefakt = leerer Ring (standardmäßig ausgeblendet, per Chip zuschaltbar). Stationsansicht: Begründung und Spalte „Bewertung“ je Zelle; CSV-Export mit „Bewertung“ und „Begründung“.
+Unplausible Treffer – weiter von der eigenen Schätzung entfernt als die von OpenCelliD angegebene Reichweite (mindestens 5 km) oder auf weniger als 3 Messungen beruhend und über 1 km entfernt – bestätigen keine Station, zählen nicht im Histogramm und erscheinen grau statt lila; die Stationsansicht nennt den Grund. Abgefragt wird immer mit vollständiger Kennung (MCC, MNC, TAC/LAC, Cell-ID); große Abstände kommen meist von veralteten Einträgen nach Umbauten, sehr wenigen Messungen oder falsch hochgeladenen Daten.
 In der Karte (Ansicht *Stationen*, Schalter „OpenCelliD“) und in der Stationsansicht verbindet eine dünne, lila gestrichelte Linie die eigene Schätzung mit der OpenCelliD-Position jeder dort verzeichneten Zelle (ab 30 m Abstand).
 
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
