@@ -51,13 +51,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.CoverageCell
 import de.funkstrecke.data.Reliability
 import de.funkstrecke.data.coverageFor
+import de.funkstrecke.data.ocidSector
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
 import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.formatDistance
+import de.funkstrecke.util.tr
 
-private enum class MapMode(val label: String) { STATIONS("Stationen"), COVERAGE("Abdeckung"), TRACKING("TA-Grenzen") }
+private enum class MapMode(private val de: String, private val en: String) {
+    STATIONS("Stationen", "Stations"),
+    COVERAGE("Abdeckung", "Coverage"),
+    TRACKING("TA-Grenzen", "TA borders"),
+    ;
+
+    val label: String get() = tr(de, en)
+}
 
 /** Gut unterscheidbare Farben für Tracking Areas, nach Größe vergeben */
 private val taPalette = listOf(
@@ -66,7 +75,13 @@ private val taPalette = listOf(
 )
 private val taBorder = Color(0xFF15191C)
 
-private enum class CoverageView(val label: String) { SIGNAL("Signalstärke"), ENDC("5G NSA (EN-DC)") }
+private enum class CoverageView(private val de: String, private val en: String) {
+    SIGNAL("Signalstärke", "Signal strength"),
+    ENDC("5G NSA (EN-DC)", "5G NSA (EN-DC)"),
+    ;
+
+    val label: String get() = tr(de, en)
+}
 
 /** Farben der 5G-Ansicht je EndcMode-Rang */
 private fun endcColor(rank: Int): Color = when (rank) {
@@ -77,21 +92,21 @@ private fun endcColor(rank: Int): Color = when (rank) {
     else -> Color(0xFF7A8690) // kein 5G
 }
 
-private val endcLabels = listOf(
+private val endcLabels get() = listOf(
     4 to "5G SA",
-    3 to "5G NSA aktiv (EN-DC verbunden)",
-    2 to "5G NSA verfügbar, nicht verbunden",
-    1 to "5G gesperrt",
-    0 to "kein 5G",
+    3 to tr("5G NSA aktiv (EN-DC verbunden)", "5G NSA active (EN-DC connected)"),
+    2 to tr("5G NSA verfügbar, nicht verbunden", "5G NSA available, not connected"),
+    1 to tr("5G gesperrt", "5G restricted"),
+    0 to tr("kein 5G", "no 5G"),
 )
 
 /** Bezeichnung der Signalstufen; Schwellen für 4G/5G (RSRP) in Klammern. */
-private val levelLabels = listOf(
-    4 to "sehr gut (≥ −80 dBm)",
-    3 to "gut (−80 … −90)",
-    2 to "mittel (−90 … −100)",
-    1 to "schwach (−100 … −110)",
-    0 to "sehr schwach (< −110)",
+private val levelLabels get() = listOf(
+    4 to tr("sehr gut (≥ −80 dBm)", "very good (≥ −80 dBm)"),
+    3 to tr("gut (−80 … −90)", "good (−80 … −90)"),
+    2 to tr("mittel (−90 … −100)", "fair (−90 … −100)"),
+    1 to tr("schwach (−100 … −110)", "weak (−100 … −110)"),
+    0 to tr("sehr schwach (< −110)", "very weak (< −110)"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -173,7 +188,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 color = taBorder,
                 sizeDp = 11,
                 title = "TAC ${c.from} → ${c.to}",
-                snippet = "${de.funkstrecke.util.formatDateTime(c.time)} · Grenze auf ±${formatDistance(c.gapM / 2)} genau",
+                snippet = tr("${de.funkstrecke.util.formatDateTime(c.time)} · Grenze auf ±${formatDistance(c.gapM / 2)} genau", "${de.funkstrecke.util.formatDateTime(c.time)} · border accurate to ±${formatDistance(c.gapM / 2)}"),
             )
         }.orEmpty()
     }
@@ -201,7 +216,11 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 null
             } else {
                 val c = operatorColorRaw(s.operatorName)
-                MapCircle(e.latitude, e.longitude, e.radiusM, if (a.reliability == Reliability.RELIABLE) c else c.copy(alpha = 0.5f))
+                MapCircle(
+                    e.latitude, e.longitude, e.radiusM,
+                    if (a.reliability == Reliability.RELIABLE) c else c.copy(alpha = 0.5f),
+                    sector = ocidSector(s),
+                )
             }
         }
     }
@@ -219,7 +238,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     Reliability.ARTEFACT -> 12
                 },
                 title = "${s.title} · ${a.reliability.label}",
-                snippet = "${s.operatorName ?: "Unbekannt"} · ${a.reason}",
+                snippet = "${s.operatorName ?: tr("Unbekannt", "Unknown")} · ${a.reason}",
                 onClick = { onOpen(s.key) },
                 hollow = a.reliability == Reliability.ARTEFACT,
             )
@@ -232,14 +251,14 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Karte")
+                        Text(tr("Karte", "Map"))
                         Text(
                             when (mode) {
-                                MapMode.STATIONS -> "${located.size} von ${stations.size} Stationen verortet"
-                                MapMode.TRACKING -> if (taMap == null) "Noch keine Tracking-Area-Daten" else
-                                    "$taOperator · ${taMap.areas.size} Tracking Areas · ${taMap.crossings.size} Übergänge"
-                                MapMode.COVERAGE -> if (operator == null) "Noch keine Abdeckungsdaten" else
-                                    "$operator · ${if (coverageView == CoverageView.ENDC) endcCells.size else cells.size} Felder à ~50 m"
+                                MapMode.STATIONS -> tr("${located.size} von ${stations.size} Stationen verortet", "${located.size} of ${stations.size} stations located")
+                                MapMode.TRACKING -> if (taMap == null) tr("Noch keine Tracking-Area-Daten", "No tracking area data yet") else
+                                    tr("$taOperator · ${taMap.areas.size} Tracking Areas · ${taMap.crossings.size} Übergänge", "$taOperator · ${taMap.areas.size} tracking areas · ${taMap.crossings.size} crossings")
+                                MapMode.COVERAGE -> if (operator == null) tr("Noch keine Abdeckungsdaten", "No coverage data yet") else
+                                    tr("$operator · ${if (coverageView == CoverageView.ENDC) endcCells.size else cells.size} Felder à ~50 m", "$operator · ${if (coverageView == CoverageView.ENDC) endcCells.size else cells.size} tiles of ~50 m")
                             },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -308,13 +327,13 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                         FilterChip(
                             selected = showCandidates,
                             onClick = { showCandidates = !showCandidates },
-                            label = { Text("Kandidaten ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}") },
+                            label = { Text(tr("Kandidaten ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}", "Candidates ${reliabilityCounts[Reliability.CANDIDATE] ?: 0}")) },
                             leadingIcon = { ReliabilityDot(Reliability.CANDIDATE) },
                         )
                         FilterChip(
                             selected = showArtefacts,
                             onClick = { showArtefacts = !showArtefacts },
-                            label = { Text("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}") },
+                            label = { Text(tr("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}", "Artefacts ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}")) },
                             leadingIcon = { ReliabilityDot(Reliability.ARTEFACT) },
                         )
                     }
@@ -326,7 +345,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                                 selected = op == taOperator,
                                 onClick = { chosenTaOperator = op },
                                 label = { Text(op) },
-                                leadingIcon = { OperatorDot(op.takeIf { it != "Unbekannt" }) },
+                                leadingIcon = { OperatorDot(op.takeIf { it != tr("Unbekannt", "Unknown") }) },
                             )
                         }
                     }
@@ -352,13 +371,13 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                                 selected = op == operator,
                                 onClick = { chosenOperator = op },
                                 label = { Text(op) },
-                                leadingIcon = { OperatorDot(op.takeIf { it != "Unbekannt" }) },
+                                leadingIcon = { OperatorDot(op.takeIf { it != tr("Unbekannt", "Unknown") }) },
                             )
                         }
                     }
                     if (coverageView == CoverageView.SIGNAL && rats.size > 1) {
                         ChipBar {
-                            FilterChip(selected = ratFilter == null, onClick = { ratFilter = null }, label = { Text("Beste Technik") })
+                            FilterChip(selected = ratFilter == null, onClick = { ratFilter = null }, label = { Text(tr("Beste Technik", "Best technology")) })
                             rats.forEach { r ->
                                 FilterChip(selected = ratFilter == r, onClick = { ratFilter = r }, label = { Text(r) })
                             }
@@ -370,8 +389,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             if (mode == MapMode.TRACKING) {
                 if (taMap == null) {
                     InfoBubble(
-                        "Noch keine Tracking-Area-Daten. Sie entstehen bei der Aufzeichnung aus der TAC der verbundenen " +
-                            "Zelle an jedem Messpunkt mit genauer Position.",
+                        tr("Noch keine Tracking-Area-Daten. Sie entstehen bei der Aufzeichnung aus der TAC der verbundenen ", "No tracking area data yet. It is created during recording from the TAC of the serving ") +
+                            tr("Zelle an jedem Messpunkt mit genauer Position.", "cell at every measurement point with a precise position."),
                         Modifier.align(Alignment.Center),
                     )
                 } else {
@@ -381,11 +400,11 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 if (operators.isEmpty()) {
                     InfoBubble(
                         if (coverageView == CoverageView.ENDC) {
-                            "Noch keine 5G-Daten. Sie entstehen bei der Aufzeichnung ab dieser Version, sobald das Handy " +
-                                "mit LTE verbunden ist und eine genaue Position hat."
+                            tr("Noch keine 5G-Daten. Sie entstehen bei der Aufzeichnung ab dieser Version, sobald das Handy ", "No 5G data yet. It is created during recording from this version on, as soon as the phone ") +
+                                tr("mit LTE verbunden ist und eine genaue Position hat.", "is connected to LTE and has a precise position.")
                         } else {
-                            "Noch keine Abdeckungsdaten. Starte im Live-Tab die Aufzeichnung: Jeder Messpunkt mit genauer " +
-                                "Position färbt ein Feld von etwa 50 × 50 m."
+                            tr("Noch keine Abdeckungsdaten. Starte im Live-Tab die Aufzeichnung: Jeder Messpunkt mit genauer ", "No coverage data yet. Start recording in the Live tab: every measurement point with a precise ") +
+                                tr("Position färbt ein Feld von etwa 50 × 50 m.", "position colours a tile of about 50 × 50 m.")
                         },
                         Modifier.align(Alignment.Center),
                     )
@@ -396,7 +415,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 }
             } else if (located.isEmpty()) {
                 InfoBubble(
-                    "Noch keine Station verortet. Starte im Live-Tab die Aufzeichnung und bewege dich durch die Umgebung.",
+                    tr("Noch keine Station verortet. Starte im Live-Tab die Aufzeichnung und bewege dich durch die Umgebung.", "No station located yet. Start recording in the Live tab and move around the area."),
                     Modifier.align(Alignment.Center),
                 )
             }
@@ -408,7 +427,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                         .align(Alignment.BottomEnd)
                         .padding(16.dp),
                 ) {
-                    Icon(Icons.Filled.MyLocation, contentDescription = "Auf meine Position zentrieren")
+                    Icon(Icons.Filled.MyLocation, contentDescription = tr("Auf meine Position zentrieren", "Center on my position"))
                 }
             }
         }
@@ -456,7 +475,7 @@ private fun CoverageLegend(cells: List<CoverageCell>, modifier: Modifier) {
         shadowElevation = 3.dp,
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Bestes Signal je Feld", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(tr("Bestes Signal je Feld", "Best signal per tile"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             levelLabels.forEach { (level, label) ->
                 val share = (counts[level] ?: 0) * 100 / total
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -472,7 +491,7 @@ private fun CoverageLegend(cells: List<CoverageCell>, modifier: Modifier) {
                 }
             }
             Text(
-                "Nur eigene Messungen mit genauer Position. Andere Betreiber erscheinen mit einer zweiten SIM.",
+                tr("Nur eigene Messungen mit genauer Position. Andere Betreiber erscheinen mit einer zweiten SIM.", "Only your own measurements with a precise position. Other operators appear with a second SIM."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -492,7 +511,7 @@ private fun EndcLegend(tiles: List<de.funkstrecke.data.EndcTile>, modifier: Modi
         shadowElevation = 3.dp,
     ) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("Bester 5G-Zustand je Feld", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(tr("Bester 5G-Zustand je Feld", "Best 5G state per tile"), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
             endcLabels.forEach { (rank, label) ->
                 val share = (counts[rank] ?: 0) * 100 / total
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -508,7 +527,7 @@ private fun EndcLegend(tiles: List<de.funkstrecke.data.EndcTile>, modifier: Modi
                 }
             }
             Text(
-                "Zustand der verbundenen LTE-Zelle deiner Daten-SIM, nur Messpunkte mit genauer Position.",
+                tr("Zustand der verbundenen LTE-Zelle deiner Daten-SIM, nur Messpunkte mit genauer Position.", "State of the serving LTE cell of your data SIM, only measurement points with a precise position."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -543,7 +562,7 @@ private fun TrackingLegend(map: de.funkstrecke.data.TrackingAreaMap, colors: Map
                 }
             }
             if (map.areas.size > 8) {
-                Text("+ ${map.areas.size - 8} weitere", style = MaterialTheme.typography.labelSmall)
+                Text(tr("+ ${map.areas.size - 8} weitere", "+ ${map.areas.size - 8} more"), style = MaterialTheme.typography.labelSmall)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
@@ -553,10 +572,10 @@ private fun TrackingLegend(map: de.funkstrecke.data.TrackingAreaMap, colors: Map
                         .background(taBorder),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Wechsel der $label unterwegs (antippen für Details)", style = MaterialTheme.typography.labelSmall)
+                Text(tr("Wechsel der $label unterwegs (antippen für Details)", "$label changes on the way (tap for details)"), style = MaterialTheme.typography.labelSmall)
             }
             Text(
-                "Linien: Grenze zwischen gemessenen Nachbarfeldern. Nur die verbundene Zelle deiner SIM zählt.",
+                tr("Linien: Grenze zwischen gemessenen Nachbarfeldern. Nur die verbundene Zelle deiner SIM zählt.", "Lines: border between measured neighbouring tiles. Only your SIM's serving cell counts."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

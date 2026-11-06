@@ -2,6 +2,7 @@ package de.funkstrecke.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -91,23 +92,23 @@ object OpenCellId {
         try {
             val code = conn.responseCode
             val text = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (code == 429) return@withContext Lookup.Failed("Zu viele Anfragen", fatal = false, retryLater = true)
-            if (code >= 500) return@withContext Lookup.Failed("Serverfehler (HTTP $code)", fatal = false)
+            if (code == 429) return@withContext Lookup.Failed(tr("Zu viele Anfragen", "Too many requests"), fatal = false, retryLater = true)
+            if (code >= 500) return@withContext Lookup.Failed(tr("Serverfehler (HTTP $code)", "Server error (HTTP $code)"), fatal = false)
             val json = runCatching { JSONObject(text) }.getOrNull()
-                ?: return@withContext Lookup.Failed("Unerwartete Antwort (HTTP $code)", fatal = false)
+                ?: return@withContext Lookup.Failed(tr("Unerwartete Antwort (HTTP $code)", "Unexpected response (HTTP $code)"), fatal = false)
             val apiCode = json.optInt("code", 0)
             if (json.has("error") || apiCode != 0) {
                 return@withContext when (apiCode) {
                     1 -> Lookup.NotFound
-                    2 -> Lookup.Failed("API-Schlüssel ungültig", fatal = true)
-                    3 -> Lookup.Failed("OpenCelliD lehnt die Kennung ab", fatal = false)
-                    4 -> Lookup.Failed("API-Schlüssel noch nicht freigeschaltet", fatal = true)
-                    6 -> Lookup.Failed("Zu viele Anfragen", fatal = false, retryLater = true)
-                    7 -> Lookup.Failed("Tageslimit von OpenCelliD erreicht", fatal = true)
+                    2 -> Lookup.Failed(tr("API-Schlüssel ungültig", "Invalid API key"), fatal = true)
+                    3 -> Lookup.Failed(tr("OpenCelliD lehnt die Kennung ab", "OpenCelliD rejects the identifier"), fatal = false)
+                    4 -> Lookup.Failed(tr("API-Schlüssel noch nicht freigeschaltet", "API key not activated yet"), fatal = true)
+                    6 -> Lookup.Failed(tr("Zu viele Anfragen", "Too many requests"), fatal = false, retryLater = true)
+                    7 -> Lookup.Failed(tr("Tageslimit von OpenCelliD erreicht", "OpenCelliD daily limit reached"), fatal = true)
                     else -> if (json.optString("error").contains("not found", ignoreCase = true)) {
                         Lookup.NotFound
                     } else {
-                        Lookup.Failed(json.optString("error").ifBlank { "Fehler $apiCode" }, fatal = false)
+                        Lookup.Failed(json.optString("error").ifBlank { tr("Fehler $apiCode", "Error $apiCode") }, fatal = false)
                     }
                 }
             }
@@ -121,7 +122,7 @@ object OpenCellId {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Lookup.Failed("Keine Verbindung zu OpenCelliD", fatal = false)
+            Lookup.Failed(tr("Keine Verbindung zu OpenCelliD", "No connection to OpenCelliD"), fatal = false)
         } finally {
             conn.disconnect()
         }

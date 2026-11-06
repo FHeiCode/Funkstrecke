@@ -35,16 +35,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.service.Geofencer
 import de.funkstrecke.service.HomeStatus
+import de.funkstrecke.util.AppLanguage
 import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.CallBehavior
+import de.funkstrecke.util.Lang
 import de.funkstrecke.util.ScanPreset
 import de.funkstrecke.util.formatDistance
 import de.funkstrecke.util.SettingsStore
+import de.funkstrecke.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -58,9 +62,9 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Einstellungen") },
+                title = { Text(tr("Einstellungen", "Settings")) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück", "Back")) }
                 },
             )
         },
@@ -73,7 +77,19 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(28.dp),
         ) {
-            Section("Energiemodus") {
+            Section(tr("Sprache", "Language")) {
+                val context = LocalContext.current
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AppLanguage.entries.forEach { l ->
+                        FilterChip(
+                            selected = Lang.language == l,
+                            onClick = { Lang.set(context, l) },
+                            label = { Text(l.label) },
+                        )
+                    }
+                }
+            }
+            Section(tr("Energiemodus", "Power mode")) {
                 ScanPreset.entries.forEach { p ->
                     val selected = p == preset
                     OutlinedCard(
@@ -92,24 +108,24 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                 }
                 if (preset == null) {
                     Text(
-                        "Eigene Einstellung (unten angepasst)",
+                        tr("Eigene Einstellung (unten angepasst)", "Custom setting (adjusted below)"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.secondary,
                     )
                 }
             }
 
-            Section("Heimatbasis") {
+            Section(tr("Heimatbasis", "Home base")) {
                 OutlinedCard(onClick = onHomeBase, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(14.dp)) {
-                        Text("Automatisch starten beim Verlassen", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        Text(tr("Automatisch starten beim Verlassen", "Start automatically when leaving"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                         Text(
                             when {
-                                !home.hasPoint -> "Nicht eingerichtet. Tippen, um Ort und Radius festzulegen."
+                                !home.hasPoint -> tr("Nicht eingerichtet. Tippen, um Ort und Radius festzulegen.", "Not set up. Tap to set location and radius.")
                                 home.enabled && homeStatus == HomeStatus.Active ->
-                                    "Aktiv · Radius ${formatDistance(home.radiusM.toDouble())}"
-                                home.enabled -> "Eingeschaltet, aber nicht aktiv. Tippen für Details."
-                                else -> "Ausgeschaltet · Radius ${formatDistance(home.radiusM.toDouble())}"
+                                    tr("Aktiv · Radius ${formatDistance(home.radiusM.toDouble())}", "Active · radius ${formatDistance(home.radiusM.toDouble())}")
+                                home.enabled -> tr("Eingeschaltet, aber nicht aktiv. Tippen für Details.", "Switched on, but not active. Tap for details.")
+                                else -> tr("Ausgeschaltet · Radius ${formatDistance(home.radiusM.toDouble())}", "Off · radius ${formatDistance(home.radiusM.toDouble())}")
                             },
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -117,8 +133,8 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                 }
             }
 
-            Section("Aufzeichnung") {
-                FieldTitle("Scan höchstens alle")
+            Section(tr("Aufzeichnung", "Recording")) {
+                FieldTitle(tr("Scan höchstens alle", "Scan at most every"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 5, 10, 30, 60).forEach { v ->
                         FilterChip(
@@ -129,24 +145,24 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(4.dp))
-                FieldTitle("Nur scannen nach Bewegung von mindestens")
+                FieldTitle(tr("Nur scannen nach Bewegung von mindestens", "Only scan after moving at least"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(0, 10, 15, 25, 50, 100).forEach { v ->
                         FilterChip(
                             selected = settings.recordMinDistanceM == v,
                             onClick = { SettingsStore.update { it.copy(recordMinDistanceM = v) } },
-                            label = { Text(if (v == 0) "immer" else "$v m") },
+                            label = { Text(if (v == 0) tr("immer", "always") else "$v m") },
                         )
                     }
                 }
                 Hint(
-                    "Im Stand bringen weitere Scans kaum neue Information für die Standortschätzung. " +
-                        "Ein Mindestabstand spart deshalb Akku, ohne die Schätzung zu verschlechtern.",
+                    tr("Im Stand bringen weitere Scans kaum neue Information für die Standortschätzung. ", "When standing still, further scans add little information for the location estimate. ") +
+                        tr("Ein Mindestabstand spart deshalb Akku, ohne die Schätzung zu verschlechtern.", "A minimum distance therefore saves battery without degrading the estimate."),
                 )
             }
 
-            Section("Live-Ansicht") {
-                FieldTitle("Aktualisieren alle")
+            Section(tr("Live-Ansicht", "Live view")) {
+                FieldTitle(tr("Aktualisieren alle", "Refresh every"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(3, 5, 10, 15, 30).forEach { v ->
                         FilterChip(
@@ -156,36 +172,36 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                         )
                     }
                 }
-                Hint("Gilt nur, solange der Live-Tab offen ist und keine Aufzeichnung läuft. Während der Aufzeichnung zeigt er deren Scans.")
+                Hint(tr("Gilt nur, solange der Live-Tab offen ist und keine Aufzeichnung läuft. Während der Aufzeichnung zeigt er deren Scans.", "Only applies while the Live tab is open and no recording is running. During recording it shows the recording's scans."))
             }
 
-            Section("Telefonate & Datenverkehr") {
+            Section(tr("Telefonate & Datenverkehr", "Calls & data traffic")) {
                 val callBehavior by SettingsStore.callBehavior.collectAsStateWithLifecycle()
                 val dataBehavior by SettingsStore.dataBehavior.collectAsStateWithLifecycle()
                 Text(
-                    "Zell-Scans bitten das Modem um zusätzliche Messungen. Während eines Gesprächs oder bei großen " +
-                        "Downloads kann das auf manchen Geräten stören.",
+                    tr("Zell-Scans bitten das Modem um zusätzliche Messungen. Während eines Gesprächs oder bei großen ", "Cell scans ask the modem for extra measurements. During a call or large ") +
+                        tr("Downloads kann das auf manchen Geräten stören.", "downloads this can interfere on some devices."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text("Während eines Telefonats", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("Während eines Telefonats", "During a call"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 BehaviorChoices(callBehavior, { it.callDescription }, SettingsStore::setCallBehavior)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Bei starkem Datenverkehr (ab etwa 256 kbit/s mobil)",
+                    tr("Bei starkem Datenverkehr (ab etwa 256 kbit/s mobil)", "During heavy data traffic (from about 256 kbit/s mobile)"),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 BehaviorChoices(dataBehavior, { it.dataDescription }, SettingsStore::setDataBehavior)
             }
 
-            Section("Messung") {
+            Section(tr("Messung", "Measurement")) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Frische Messung anfordern", style = MaterialTheme.typography.titleSmall)
+                        Text(tr("Frische Messung anfordern", "Request fresh measurement"), style = MaterialTheme.typography.titleSmall)
                         Text(
-                            "An: Das Modem misst bei jedem Scan neu, die Werte passen genau zur GPS-Position. " +
-                                "Aus: Android liefert den letzten Stand des Modems, oft einige Sekunden alt, dafür sparsamer.",
+                            tr("An: Das Modem misst bei jedem Scan neu, die Werte passen genau zur GPS-Position. ", "On: the modem measures anew on every scan; values match the GPS position exactly. ") +
+                                tr("Aus: Android liefert den letzten Stand des Modems, oft einige Sekunden alt, dafür sparsamer.", "Off: Android returns the modem's last state, often a few seconds old, but uses less power."),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -202,8 +218,8 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                 val ocidKey by SettingsStore.openCellIdKey.collectAsStateWithLifecycle()
                 var keyInput by rememberSaveable { mutableStateOf(ocidKey) }
                 Text(
-                    "Gleicht gefundene Zellen mit der offenen Zelldatenbank opencellid.org ab. Dafür brauchst du einen " +
-                        "kostenlosen API-Schlüssel (Konto auf opencellid.org anlegen, Schlüssel unter „My Account“).",
+                    tr("Gleicht gefundene Zellen mit der offenen Zelldatenbank opencellid.org ab. Dafür brauchst du einen ", "Compares found cells with the open cell database opencellid.org. This requires a ") +
+                        tr("kostenlosen API-Schlüssel (Konto auf opencellid.org anlegen, Schlüssel unter „My Account“).", "free API key (create an account on opencellid.org, key under \"My Account\")."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -213,25 +229,25 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                         keyInput = it
                         SettingsStore.setOpenCellIdKey(it)
                     },
-                    label = { Text("API-Schlüssel") },
+                    label = { Text(tr("API-Schlüssel", "API key")) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "Beim Abgleich werden die Kennungen deiner gefundenen Zellen an OpenCelliD gesendet, keine Positionen. " +
-                        "Ergebnisse gelten 30 Tage; danach wird neu gefragt.",
+                    tr("Beim Abgleich werden die Kennungen deiner gefundenen Zellen an OpenCelliD gesendet, keine Positionen. ", "The comparison sends the identifiers of your found cells to OpenCelliD, no positions. ") +
+                        tr("Ergebnisse gelten 30 Tage; danach wird neu gefragt.", "Results are valid for 30 days; then they are requested again."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            Section("Wohin der Akku geht") {
+            Section(tr("Wohin der Akku geht", "Where the battery goes")) {
                 Hint(
-                    "Den größten Anteil hat das GPS. Funkstrecke fragt die Position so oft ab, wie gescannt wird, " +
-                        "mindestens aber alle 10 s, damit Halt und Weiterfahrt schnell erkannt werden. " +
-                        "Im Stand gibt es nur einmal pro Minute einen Zell-Scan. " +
-                        "Danach folgen die Zellmessungen des Modems und ein eingeschalteter Bildschirm. " +
-                        "Für lange Touren: Modus „Sparsam“ und Bildschirm aus, die Aufzeichnung läuft im Hintergrund weiter.",
+                    tr("Den größten Anteil hat das GPS. Funkstrecke fragt die Position so oft ab, wie gescannt wird, ", "GPS takes the largest share. Funkstrecke requests the position as often as it scans, ") +
+                        tr("mindestens aber alle 10 s, damit Halt und Weiterfahrt schnell erkannt werden. ", "but at least every 10 s so that stops and departures are detected quickly. ") +
+                        tr("Im Stand gibt es nur einmal pro Minute einen Zell-Scan. ", "When stationary there is only one cell scan per minute. ") +
+                        tr("Danach folgen die Zellmessungen des Modems und ein eingeschalteter Bildschirm. ", "Next come the modem's cell measurements and a switched-on screen. ") +
+                        tr("Für lange Touren: Modus „Sparsam“ und Bildschirm aus, die Aufzeichnung läuft im Hintergrund weiter.", "For long trips: \"Saver\" mode and screen off; recording continues in the background."),
                 )
             }
             Spacer(Modifier.height(16.dp))

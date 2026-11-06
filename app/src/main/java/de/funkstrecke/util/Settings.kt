@@ -18,23 +18,32 @@ data class ScanSettings(
     val forceRefresh: Boolean = true,
 )
 
-enum class ScanPreset(val label: String, val description: String, val settings: ScanSettings) {
+enum class ScanPreset(private val de: String, private val en: String, private val descDe: String, private val descEn: String, val settings: ScanSettings) {
     PRECISE(
         "Genau",
+        "Precise",
         "Scan alle 3 s, auch im Stand. Höchster Verbrauch.",
+        "Scan every 3 s, even when standing still. Highest consumption.",
         ScanSettings(recordIntervalS = 3, recordMinDistanceM = 0, liveIntervalS = 3, forceRefresh = true),
     ),
     BALANCED(
         "Ausgewogen",
+        "Balanced",
         "Scan alle 10 s, nur wenn du dich 15 m bewegt hast.",
+        "Scan every 10 s, only after you have moved 15 m.",
         ScanSettings(recordIntervalS = 10, recordMinDistanceM = 15, liveIntervalS = 5, forceRefresh = true),
     ),
     SAVER(
         "Sparsam",
+        "Saver",
         "Scan alle 30 s nach 50 m Bewegung, Zellwerte aus dem Zwischenspeicher des Modems.",
+        "Scan every 30 s after 50 m of movement, cell values from the modem cache.",
         ScanSettings(recordIntervalS = 30, recordMinDistanceM = 50, liveIntervalS = 15, forceRefresh = false),
     ),
     ;
+
+    val label: String get() = tr(de, en)
+    val description: String get() = tr(descDe, descEn)
 
     companion object {
         fun matching(settings: ScanSettings): ScanPreset? = entries.firstOrNull { it.settings == settings }
@@ -77,6 +86,7 @@ object SettingsStore {
     @Synchronized
     fun init(context: Context) {
         if (prefs != null) return
+        Lang.init(context)
         val p = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         prefs = p
         val defaults = ScanPreset.BALANCED.settings

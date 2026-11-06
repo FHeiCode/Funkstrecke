@@ -1,6 +1,7 @@
 package de.funkstrecke.data
 
 import de.funkstrecke.radio.Operators
+import de.funkstrecke.util.tr
 import kotlin.math.floor
 
 /*
@@ -68,7 +69,7 @@ private const val CROSSING_MAX_DISTANCE_M = 1_500.0
 
 /** [points] zeitlich sortiert. */
 fun buildTrackingAreas(points: List<TaPoint>): Map<TaKey, TrackingAreaMap> {
-    val byKey = points.groupBy { TaKey(Operators.name(it.mcc, it.mnc) ?: (if (it.mcc != null) "${it.mcc}-${it.mnc}" else "Unbekannt"), taGroupOf(it.rat)) }
+    val byKey = points.groupBy { TaKey(Operators.name(it.mcc, it.mnc) ?: (if (it.mcc != null) "${it.mcc}-${it.mnc}" else tr("Unbekannt", "Unknown")), taGroupOf(it.rat)) }
     return byKey.mapValues { (key, list) ->
         // Felder: häufigste TAC je Feld
         val tiles = list

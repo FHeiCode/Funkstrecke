@@ -318,3 +318,15 @@ internal object Linear {
         return Array(n) { i -> DoubleArray(n) { k -> m[i][n + k] } }
     }
 }
+
+/** Die Methode wird deutsch gespeichert; für die Anzeige in die eingestellte Sprache übersetzen. */
+fun localizeMethod(method: String): String =
+    if (!de.funkstrecke.util.Lang.english) {
+        method
+    } else {
+        method
+            .replace("Schwerpunkt (grob)", "centroid (rough)")
+            .replace("(Pegel + TA)", "(signal + TA)")
+            .replace("(Pegel)", "(signal)")
+            .replace("mehrdeutig – aus anderer Richtung messen", "ambiguous – measure from another direction")
+    }

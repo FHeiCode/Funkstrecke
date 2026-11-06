@@ -22,6 +22,7 @@ import de.funkstrecke.util.Busy
 import de.funkstrecke.util.CallGuard
 import de.funkstrecke.util.CsvExport
 import de.funkstrecke.util.SettingsStore
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -152,7 +153,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelOpenCellId() {
         ocidJob?.cancel()
-        _ocidProgress.value = _ocidProgress.value?.copy(running = false, stopReason = "Abgebrochen")
+        _ocidProgress.value = _ocidProgress.value?.copy(running = false, stopReason = tr("Abgebrochen", "Cancelled"))
     }
 
     fun clearAll() {
@@ -177,7 +178,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     .toMap()
                 CsvExport.cellsCsv(cells, estimates, assessments)
             }
-            CsvExport.share(app, "zellen", csv)
+            CsvExport.share(app, tr("zellen", "cells"), csv)
         }
     }
 
@@ -185,7 +186,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         val app = getApplication<Application>()
         viewModelScope.launch {
             val csv = withContext(Dispatchers.IO) { CsvExport.measurementsCsv(dao.allMeasurements(), dao.allCells()) }
-            CsvExport.share(app, "messprotokoll", csv)
+            CsvExport.share(app, tr("messprotokoll", "measurements"), csv)
         }
     }
 

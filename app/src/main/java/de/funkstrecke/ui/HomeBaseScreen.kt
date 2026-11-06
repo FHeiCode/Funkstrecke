@@ -69,6 +69,7 @@ import de.funkstrecke.util.HomeStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.formatCoordinates
 import de.funkstrecke.util.formatDistance
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.launch
 
 /** Farbe der Heimatbasis auf allen Karten */
@@ -120,17 +121,17 @@ fun HomeBaseScreen(onBack: () -> Unit) {
                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         } else {
-            message("Ohne „Standort: Immer zulassen“ kann Android die App beim Verlassen nicht wecken.")
+            message(tr("Ohne „Standort: Immer zulassen“ kann Android die App beim Verlassen nicht wecken.", "Without \"Location: Allow all the time\", Android cannot wake the app when you leave."))
         }
     }
 
     fun enable() {
         if (!home.hasPoint) {
-            message("Lege zuerst einen Punkt fest.")
+            message(tr("Lege zuerst einen Punkt fest.", "Set a point first."))
             return
         }
         if (!LocationHelper.hasPermission(context)) {
-            message("Erteile zuerst im Live-Tab die Standortfreigabe.")
+            message(tr("Erteile zuerst im Live-Tab die Standortfreigabe.", "Grant location permission in the Live tab first."))
             return
         }
         if (!HomeStore.hasBackgroundLocation(context) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -150,7 +151,7 @@ fun HomeBaseScreen(onBack: () -> Unit) {
             val here = LocationHelper.currentLocation(context)
             locating = false
             if (here == null) {
-                message("Keine Position ermittelt. Ist der Standort eingeschaltet?")
+                message(tr("Keine Position ermittelt. Ist der Standort eingeschaltet?", "No position found. Is location turned on?"))
             } else {
                 change { it.copy(latitude = here.latitude, longitude = here.longitude) }
                 recenterKey++
@@ -162,9 +163,9 @@ fun HomeBaseScreen(onBack: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Heimatbasis") },
+                title = { Text(tr("Heimatbasis", "Home base")) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück", "Back")) }
                 },
             )
         },
@@ -180,7 +181,7 @@ fun HomeBaseScreen(onBack: () -> Unit) {
         ) {
             StatusCard(status, home.enabled)
 
-            Section("Ort") {
+            Section(tr("Ort", "Location")) {
                 val lat = home.latitude
                 val lon = home.longitude
                 val dots = if (lat != null && lon != null) listOf(MapDot(lat, lon, HomeBaseColor, sizeDp = 14)) else emptyList()
@@ -205,7 +206,7 @@ fun HomeBaseScreen(onBack: () -> Unit) {
                         .clip(RoundedCornerShape(12.dp)),
                 )
                 Text(
-                    "Lange auf die Karte drücken, um die Heimatbasis zu setzen oder zu verschieben.",
+                    tr("Lange auf die Karte drücken, um die Heimatbasis zu setzen oder zu verschieben.", "Long-press the map to set or move the home base."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -217,11 +218,11 @@ fun HomeBaseScreen(onBack: () -> Unit) {
                             Icon(Icons.Filled.MyLocation, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
                         Spacer(Modifier.width(8.dp))
-                        Text(if (locating) "Suche Position …" else "Aktuelle Position verwenden")
+                        Text(if (locating) tr("Suche Position …", "Locating …") else tr("Aktuelle Position verwenden", "Use current position"))
                     }
                 }
                 if (lat != null && lon != null) {
-                    KeyValue("Mittelpunkt", formatCoordinates(lat, lon))
+                    KeyValue(tr("Mittelpunkt", "Center"), formatCoordinates(lat, lon))
                 }
             }
 
@@ -236,29 +237,29 @@ fun HomeBaseScreen(onBack: () -> Unit) {
                     }
                 }
                 Text(
-                    "Android meldet das Verlassen meist mit 1–3 Minuten Verzögerung, und Kreise unter 150 m " +
-                        "lösen oft unzuverlässig aus. 200–300 m sind ein guter Kompromiss.",
+                    tr("Android meldet das Verlassen meist mit 1–3 Minuten Verzögerung, und Kreise unter 150 m ", "Android usually reports leaving with a 1–3 minute delay, and circles under 150 m ") +
+                        tr("lösen oft unzuverlässig aus. 200–300 m sind ein guter Kompromiss.", "often trigger unreliably. 200–300 m is a good compromise."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            Section("Automatik") {
+            Section(tr("Automatik", "Automation")) {
                 SwitchRow(
-                    title = "Aufzeichnung beim Verlassen starten",
-                    description = "Startet die normale Aufzeichnung mit deinem Energiemodus, sobald du den Kreis verlässt.",
+                    title = tr("Aufzeichnung beim Verlassen starten", "Start recording when leaving"),
+                    description = tr("Startet die normale Aufzeichnung mit deinem Energiemodus, sobald du den Kreis verlässt.", "Starts normal recording with your power mode as soon as you leave the circle."),
                     checked = home.enabled,
                     onChange = { on -> if (on) enable() else change { it.copy(enabled = false) } },
                 )
                 SwitchRow(
-                    title = "Bei Rückkehr stoppen",
-                    description = "Beendet die Aufzeichnung, wenn du den Kreis wieder betrittst.",
+                    title = tr("Bei Rückkehr stoppen", "Stop on return"),
+                    description = tr("Beendet die Aufzeichnung, wenn du den Kreis wieder betrittst.", "Ends recording when you re-enter the circle."),
                     checked = home.stopOnReturn,
                     onChange = { on -> change(sync = false) { it.copy(stopOnReturn = on) } },
                 )
                 if (!hasBackground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     Text(
-                        "Benötigt „Standort: Immer zulassen“. Beim Einschalten öffnet sich die Einstellung; dort „Immer zulassen“ wählen.",
+                        tr("Benötigt „Standort: Immer zulassen“. Beim Einschalten öffnet sich die Einstellung; dort „Immer zulassen“ wählen.", "Requires \"Location: Allow all the time\". Switching on opens the setting; choose \"Allow all the time\" there."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary,
                     )
@@ -266,10 +267,10 @@ fun HomeBaseScreen(onBack: () -> Unit) {
             }
 
             if (!batteryExempt) {
-                Section("Akku-Optimierung") {
+                Section(tr("Akku-Optimierung", "Battery optimization")) {
                     Text(
-                        "Einige Hersteller (z. B. Samsung, Xiaomi, Huawei) blockieren das Aufwecken im Hintergrund. " +
-                            "Nimm Funkstrecke von der Akku-Optimierung aus, wenn die Aufzeichnung nicht startet.",
+                        tr("Einige Hersteller (z. B. Samsung, Xiaomi, Huawei) blockieren das Aufwecken im Hintergrund. ", "Some manufacturers (e.g. Samsung, Xiaomi, Huawei) block background wake-ups. ") +
+                            tr("Nimm Funkstrecke von der Akku-Optimierung aus, wenn die Aufzeichnung nicht startet.", "Exclude Funkstrecke from battery optimization if recording does not start."),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     TextButton(onClick = {
@@ -280,14 +281,14 @@ fun HomeBaseScreen(onBack: () -> Unit) {
                                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
                             )
                         }
-                    }) { Text("Akku-Einstellungen öffnen") }
+                    }) { Text(tr("Akku-Einstellungen öffnen", "Open battery settings")) }
                 }
             }
 
             if (home.hasPoint) {
                 TextButton(onClick = {
                     change { it.copy(latitude = null, longitude = null, enabled = false) }
-                }) { Text("Heimatbasis entfernen", color = MaterialTheme.colorScheme.error) }
+                }) { Text(tr("Heimatbasis entfernen", "Remove home base"), color = MaterialTheme.colorScheme.error) }
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -297,22 +298,22 @@ fun HomeBaseScreen(onBack: () -> Unit) {
 @Composable
 private fun StatusCard(status: HomeStatus, enabled: Boolean) {
     val (title, text, ok) = when (status) {
-        HomeStatus.Active -> Triple("Aktiv", "Die Aufzeichnung startet, sobald du den Kreis verlässt.", true)
-        HomeStatus.Registering -> Triple("Wird angemeldet …", "Einen Moment.", true)
-        HomeStatus.Off -> Triple("Aus", "Lege einen Ort und einen Radius fest und schalte die Automatik ein.", false)
-        HomeStatus.NoPoint -> Triple("Kein Ort festgelegt", "Drücke lange auf die Karte oder verwende die aktuelle Position.", false)
-        HomeStatus.NeedsLocationPermission -> Triple("Standortfreigabe fehlt", "Erteile im Live-Tab die Standortfreigabe.", false)
+        HomeStatus.Active -> Triple(tr("Aktiv", "Active"), tr("Die Aufzeichnung startet, sobald du den Kreis verlässt.", "Recording starts as soon as you leave the circle."), true)
+        HomeStatus.Registering -> Triple(tr("Wird angemeldet …", "Registering …"), tr("Einen Moment.", "One moment."), true)
+        HomeStatus.Off -> Triple(tr("Aus", "Off"), tr("Lege einen Ort und einen Radius fest und schalte die Automatik ein.", "Set a location and a radius and switch on the automation."), false)
+        HomeStatus.NoPoint -> Triple(tr("Kein Ort festgelegt", "No location set"), tr("Drücke lange auf die Karte oder verwende die aktuelle Position.", "Long-press the map or use the current position."), false)
+        HomeStatus.NeedsLocationPermission -> Triple(tr("Standortfreigabe fehlt", "Location permission missing"), tr("Erteile im Live-Tab die Standortfreigabe.", "Grant location permission in the Live tab."), false)
         HomeStatus.NeedsBackgroundPermission -> Triple(
-            "„Immer zulassen“ fehlt",
-            "Schalte die Automatik aus und wieder ein und wähle in der Einstellung „Standort: Immer zulassen“.",
+            tr("„Immer zulassen“ fehlt", "\"Allow all the time\" missing"),
+            tr("Schalte die Automatik aus und wieder ein und wähle in der Einstellung „Standort: Immer zulassen“.", "Switch the automation off and on again and choose \"Location: Allow all the time\" in the setting."),
             false,
         )
         HomeStatus.NoPlayServices -> Triple(
-            "Google Play-Dienste fehlen",
-            "Die Heimatbasis nutzt das Geofencing der Google-Standortdienste. Auf diesem Gerät sind sie nicht verfügbar.",
+            tr("Google Play-Dienste fehlen", "Google Play services missing"),
+            tr("Die Heimatbasis nutzt das Geofencing der Google-Standortdienste. Auf diesem Gerät sind sie nicht verfügbar.", "The home base uses geofencing from Google location services. They are not available on this device."),
             false,
         )
-        is HomeStatus.Failed -> Triple("Nicht aktiv", status.message, false)
+        is HomeStatus.Failed -> Triple(tr("Nicht aktiv", "Not active"), status.message, false)
     }
     Card(
         modifier = Modifier.fillMaxWidth(),

@@ -79,15 +79,16 @@ import de.funkstrecke.service.ScanService
 import de.funkstrecke.util.Busy
 import de.funkstrecke.util.CallBehavior
 import de.funkstrecke.util.HomeStore
+import de.funkstrecke.util.Lang
 import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.ScanPreset
 import de.funkstrecke.util.ScanSettings
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatAgo
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -170,8 +171,8 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                     Column {
                         Text("Funkstrecke")
                         Text(
-                            live.at?.let { "Live-Scan · ${formatAgo(it, now)} · ${live.cells.size} Zellen hörbar" }
-                                ?: "Live-Scan",
+                            live.at?.let { tr("Live-Scan · ${formatAgo(it, now)} · ${live.cells.size} Zellen hörbar", "Live scan · ${formatAgo(it, now)} · ${live.cells.size} cells audible") }
+                                ?: tr("Live-Scan", "Live scan"),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -179,7 +180,7 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                 },
                 actions = {
                     IconButton(onClick = onSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Einstellungen")
+                        Icon(Icons.Filled.Settings, contentDescription = tr("Einstellungen", "Settings"))
                     }
                 },
             )
@@ -222,13 +223,13 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                         Text(
                             when {
                                 busy == Busy.CALL && busyBehavior == CallBehavior.PAUSE ->
-                                    "Telefonat erkannt: Zell-Scans pausieren, damit das Gespräch nicht gestört wird. Die Anzeige zeigt den letzten Stand."
+                                    tr("Telefonat erkannt: Zell-Scans pausieren, damit das Gespräch nicht gestört wird. Die Anzeige zeigt den letzten Stand.", "Call detected: cell scans are paused so the call is not disturbed. The display shows the last state.")
                                 busy == Busy.CALL ->
-                                    "Telefonat erkannt: Die App liest nur mit (höchstens alle 30 s) und fordert keine neuen Messungen an."
+                                    tr("Telefonat erkannt: Die App liest nur mit (höchstens alle 30 s) und fordert keine neuen Messungen an.", "Call detected: the app only listens (at most every 30 s) and requests no new measurements.")
                                 busyBehavior == CallBehavior.PAUSE ->
-                                    "Starker Datenverkehr: Zell-Scans pausieren, bis die Übertragung nachlässt."
+                                    tr("Starker Datenverkehr: Zell-Scans pausieren, bis die Übertragung nachlässt.", "Heavy data traffic: cell scans are paused until the transfer eases.")
                                 else ->
-                                    "Starker Datenverkehr: Die App liest nur mit und fordert keine neuen Messungen beim Modem an."
+                                    tr("Starker Datenverkehr: Die App liest nur mit und fordert keine neuen Messungen beim Modem an.", "Heavy data traffic: the app only listens and requests no new measurements from the modem.")
                             },
                             modifier = Modifier.padding(12.dp),
                             style = MaterialTheme.typography.bodySmall,
@@ -241,13 +242,13 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                     Row(Modifier.padding(vertical = 24.dp), verticalAlignment = Alignment.CenterVertically) {
                         CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
                         Spacer(Modifier.width(12.dp))
-                        Text("Scanne Funkzellen …")
+                        Text(tr("Scanne Funkzellen …", "Scanning radio cells …"))
                     }
                 }
             } else if (live.cells.isEmpty()) {
                 item {
                     Text(
-                        "Keine Zellen hörbar. Prüfe, ob eine SIM aktiv, der Flugmodus aus und der Standort eingeschaltet ist.",
+                        tr("Keine Zellen hörbar. Prüfe, ob eine SIM aktiv, der Flugmodus aus und der Standort eingeschaltet ist.", "No cells audible. Check that a SIM is active, airplane mode is off and location is on."),
                         modifier = Modifier.padding(vertical = 16.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -259,17 +260,17 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
                 }
             }
             if (serving.isNotEmpty()) {
-                item { SectionLabel(if (serving.size == 1) "Verbundene Zelle" else "Verbundene Zellen") }
+                item { SectionLabel(if (serving.size == 1) tr("Verbundene Zelle", "Serving cell") else tr("Verbundene Zellen", "Serving cells")) }
                 items(serving, key = { "s|" + it.key }) { LiveCellCard(it, null) }
             }
             if (neighbours.isNotEmpty()) {
-                item { SectionLabel("Nachbarzellen (${neighbours.size})") }
+                item { SectionLabel(tr("Nachbarzellen (${neighbours.size})", "Neighbour cells (${neighbours.size})")) }
                 items(neighbours, key = { "n|" + it.key + "|" + it.arfcn }) { cell -> LiveCellCard(cell, siteHint(cell, serving)) }
             }
             if (live.cells.isNotEmpty()) {
                 item {
                     Text(
-                        "Das Handy meldet nur Zellen des Netzes seiner SIM. Andere Betreiber erscheinen mit einer zweiten SIM (Dual-SIM).",
+                        tr("Das Handy meldet nur Zellen des Netzes seiner SIM. Andere Betreiber erscheinen mit einer zweiten SIM (Dual-SIM).", "The phone only reports cells of its SIM's network. Other operators appear with a second SIM (dual SIM)."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 8.dp),
@@ -284,20 +285,20 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
 private fun PermissionCard(asked: Boolean, onRequest: () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Standortfreigabe nötig", style = MaterialTheme.typography.titleMedium)
+            Text(tr("Standortfreigabe nötig", "Location permission required"), style = MaterialTheme.typography.titleMedium)
             Text(
-                "Android gibt Funkzellen-Daten nur an Apps mit „Genauer Standort“ heraus. " +
-                    "Die Freigabe für „Telefon“ ist optional und erlaubt das Scannen beider SIMs.",
+                tr("Android gibt Funkzellen-Daten nur an Apps mit „Genauer Standort“ heraus. ", "Android only provides cell data to apps with \"Precise location\". ") +
+                    tr("Die Freigabe für „Telefon“ ist optional und erlaubt das Scannen beider SIMs.", "The \"Phone\" permission is optional and allows scanning both SIMs."),
                 style = MaterialTheme.typography.bodyMedium,
             )
             if (asked) {
                 Text(
-                    "Falls kein Dialog erscheint: Einstellungen → Apps → Funkstrecke → Berechtigungen → Standort → „Genauen Standort verwenden“.",
+                    tr("Falls kein Dialog erscheint: Einstellungen → Apps → Funkstrecke → Berechtigungen → Standort → „Genauen Standort verwenden“.", "If no dialog appears: Settings → Apps → Funkstrecke → Permissions → Location → \"Use precise location\"."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(onClick = onRequest) { Text("Freigabe erteilen") }
+            Button(onClick = onRequest) { Text(tr("Freigabe erteilen", "Grant permission")) }
         }
     }
 }
@@ -329,21 +330,21 @@ private fun LoggingCard(
                 Column(Modifier.weight(1f)) {
                     Text(
                         when {
-                            paused -> "Scans pausiert"
-                            running -> "Aufzeichnung läuft"
-                            else -> "Aufzeichnung mit GPS"
+                            paused -> tr("Scans pausiert", "Scans paused")
+                            running -> tr("Aufzeichnung läuft", "Recording")
+                            else -> tr("Aufzeichnung mit GPS", "Recording with GPS")
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         if (paused) {
-                            "Pausiert ${PauseStore.describe(pausedUntil)}. GPS und Zell-Scans sind aus" +
-                                (if (homeEnabled) ", die Heimatbasis startet nichts." else ".")
+                            tr("Pausiert ${PauseStore.describe(pausedUntil)}. GPS und Zell-Scans sind aus", "Paused ${PauseStore.describe(pausedUntil)}. GPS and cell scans are off") +
+                                (if (homeEnabled) tr(", die Heimatbasis startet nichts.", "; the home base starts nothing.") else ".")
                         } else if (running) {
-                            "${log.scans} Scans · ${log.measurements} Messwerte"
+                            tr("${log.scans} Scans · ${log.measurements} Messwerte", "${log.scans} scans · ${log.measurements} measurements")
                         } else {
-                            "Bewege dich durch die Umgebung. Jede Position verbessert die Schätzung der Mast-Standorte."
+                            tr("Bewege dich durch die Umgebung. Jede Position verbessert die Schätzung der Mast-Standorte.", "Move around the area. Every position improves the estimate of the mast locations.")
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -353,7 +354,7 @@ private fun LoggingCard(
                     Button(onClick = onResume) {
                         Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Fortsetzen")
+                        Text(tr("Fortsetzen", "Resume"))
                     }
                 } else if (running) {
                     Button(
@@ -362,7 +363,7 @@ private fun LoggingCard(
                     ) {
                         Icon(Icons.Filled.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("Stopp")
+                        Text(tr("Stopp", "Stop"))
                     }
                 } else {
                     Button(onClick = onStart) {
@@ -378,7 +379,7 @@ private fun LoggingCard(
                     OutlinedButton(onClick = { pauseMenu = true }) {
                         Icon(Icons.Filled.Pause, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(if (running) "Pausieren …" else "Automatik pausieren …")
+                        Text(if (running) tr("Pausieren …", "Pause …") else tr("Automatik pausieren …", "Pause automation …"))
                     }
                     DropdownMenu(expanded = pauseMenu, onDismissRequest = { pauseMenu = false }) {
                         PauseStore.choices.forEach { (label, minutes) ->
@@ -395,17 +396,17 @@ private fun LoggingCard(
             }
             if (running && !paused) PhaseLine(log)
             if (log.running && log.autoStarted) {
-                Text("Automatisch gestartet: Heimatbasis verlassen", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Automatisch gestartet: Heimatbasis verlassen", "Started automatically: left home base"), style = MaterialTheme.typography.labelMedium)
             } else if (!running && homeEnabled) {
-                Text("Heimatbasis aktiv: startet automatisch beim Verlassen", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Heimatbasis aktiv: startet automatisch beim Verlassen", "Home base active: starts automatically when leaving"), style = MaterialTheme.typography.labelMedium)
             }
-            val mode = ScanPreset.matching(settings)?.label ?: "Eigene Einstellung"
+            val mode = ScanPreset.matching(settings)?.label ?: tr("Eigene Einstellung", "Custom setting")
             val rhythm = buildString {
-                append("alle ${settings.recordIntervalS} s")
-                if (settings.recordMinDistanceM > 0) append(", ab ${settings.recordMinDistanceM} m Bewegung")
+                append(tr("alle ${settings.recordIntervalS} s", "every ${settings.recordIntervalS} s"))
+                if (settings.recordMinDistanceM > 0) append(tr(", ab ${settings.recordMinDistanceM} m Bewegung", ", after ${settings.recordMinDistanceM} m of movement"))
             }
             Text(
-                "$mode: $rhythm · $totalCells Zellen in der Datenbank",
+                tr("$mode: $rhythm · $totalCells Zellen in der Datenbank", "$mode: $rhythm · $totalCells cells in the database"),
                 style = MaterialTheme.typography.labelMedium,
             )
         }
@@ -419,15 +420,15 @@ private fun siteHint(cell: CellRecord, serving: List<CellRecord>): String? {
     val match = serving.firstOrNull { s ->
         s.rat == cell.rat && s.mcc == cell.mcc && s.mnc == cell.mnc && s.pci != null && pciGroup(s.pci) == pciGroup(pci)
     } ?: return null
-    val where = match.nodeId?.let { "eNB $it" } ?: "die verbundene Zelle"
+    val where = match.nodeId?.let { "eNB $it" } ?: tr("die verbundene Zelle", "the serving cell")
     val band = cell.band?.label
     val sameBand = band != null && band == match.band?.label
     return when {
-        match.pci != pci -> "Gleiche PCI-Gruppe wie $where: vermutlich ein anderer Sektor desselben Standorts"
+        match.pci != pci -> tr("Gleiche PCI-Gruppe wie $where: vermutlich ein anderer Sektor desselben Standorts", "Same PCI group as $where: probably another sector of the same site")
         // Gleiche PCI, gleicher Träger, ohne eigene Cell-ID: das ist die verbundene Zelle selbst.
         sameBand && cell.arfcn == match.arfcn -> null
-        sameBand -> "Gleiche PCI wie $where auf weiterem Träger im selben Band: vermutlich derselbe Sektor"
-        else -> "Gleiche PCI wie $where auf anderem Band (${band ?: "?"}): üblich, vermutlich derselbe Sektor"
+        sameBand -> tr("Gleiche PCI wie $where auf weiterem Träger im selben Band: vermutlich derselbe Sektor", "Same PCI as $where on another carrier in the same band: probably the same sector")
+        else -> tr("Gleiche PCI wie $where auf anderem Band (${band ?: "?"}): üblich, vermutlich derselbe Sektor", "Same PCI as $where on another band (${band ?: "?"}): common, probably the same sector")
     }
 }
 
@@ -443,7 +444,7 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OperatorDot(cell.operatorName)
                         Spacer(Modifier.width(6.dp))
-                        Text(cell.operatorName ?: "Unbekannter Betreiber", style = MaterialTheme.typography.titleSmall)
+                        Text(cell.operatorName ?: tr("Unbekannter Betreiber", "Unknown operator"), style = MaterialTheme.typography.titleSmall)
                     }
                     val sub = listOfNotNull(
                         cell.plmn?.let { if (cell.plmnInferred) "$it*" else it },
@@ -467,11 +468,11 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 cell.area?.let { KeyValue(if (cell.rat == "4G" || cell.rat == "5G") "TAC" else "LAC", it.toString()) }
                 cell.cellId?.let { KeyValue(if (cell.rat == "5G") "NCI" else if (cell.rat == "4G") "ECI" else "CID", it.toString()) }
-                if (cell.nodeId != null) KeyValue("eNB-Sektor", "${cell.nodeId}-${cell.sector}")
+                if (cell.nodeId != null) KeyValue(tr("eNB-Sektor", "eNB sector"), "${cell.nodeId}-${cell.sector}")
                 cell.pci?.let { KeyValue(if (cell.rat == "3G") "PSC" else if (cell.rat == "2G") "BSIC" else "PCI", it.toString()) }
                 if (supportsPciGroups(cell.rat)) cell.pci?.let { KeyValue("SSS/PSS", "${pciGroup(it)}/${pciPss(it)}") }
                 cell.arfcn?.let { KeyValue(if (cell.rat == "4G") "EARFCN" else if (cell.rat == "5G") "NR-ARFCN" else "ARFCN", it.toString()) }
-                cell.band?.downlinkMhz?.let { KeyValue("Downlink", String.format(Locale.GERMANY, "%.1f MHz", it)) }
+                cell.band?.downlinkMhz?.let { KeyValue("Downlink", String.format(Lang.locale, "%.1f MHz", it)) }
                 cell.quality?.let { KeyValue(qualityLabel(cell.rat), "$it dB") }
                 cell.sinr?.let { KeyValue("SINR", "$it dB") }
                 cell.timingAdvance?.let { ta -> KeyValue("TA", cell.distanceM?.let { "$ta ≈ $it m" } ?: ta.toString()) }
@@ -481,7 +482,7 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
             }
             if (cell.plmnInferred) {
                 Text(
-                    "* MCC/MNC von der verbundenen Zelle übernommen",
+                    tr("* MCC/MNC von der verbundenen Zelle übernommen", "* MCC/MNC taken from the serving cell"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -503,17 +504,17 @@ private fun PhaseLine(log: LogState) {
     val since = log.phaseSince?.let { formatDuration(now - it) } ?: ""
     val acc = log.lastAccuracyM?.let { "±${it.roundToInt()} m" } ?: "?"
     val (title, detail) = when (log.phase) {
-        RecordPhase.WAITING -> "Warte auf erste Position · $since" to
-            (if (log.fused) "Google-Standortdienst sucht GPS, WLAN und Mobilfunk." else "GPS sucht Satelliten; im Freien geht es schneller.")
-        RecordPhase.MOVING -> "In Bewegung · GPS $acc" to "Jeder Scan wird als Messpunkt gespeichert."
-        RecordPhase.STATIONARY -> "Stillstand seit $since · GPS $acc" to
-            "Zellen werden jede Minute aufgefrischt. Neue Messpunkte gibt es erst wieder nach Bewegung."
-        RecordPhase.PAUSED -> "Pausiert" to "GPS und Zell-Scans sind aus."
-        RecordPhase.COARSE -> "Ungenaues GPS seit $since · $acc" to
+        RecordPhase.WAITING -> tr("Warte auf erste Position · $since", "Waiting for first position · $since") to
+            (if (log.fused) tr("Google-Standortdienst sucht GPS, WLAN und Mobilfunk.", "Google location service is searching GPS, Wi-Fi and mobile network.") else tr("GPS sucht Satelliten; im Freien geht es schneller.", "GPS is searching for satellites; it is faster outdoors."))
+        RecordPhase.MOVING -> tr("In Bewegung · GPS $acc", "Moving · GPS $acc") to tr("Jeder Scan wird als Messpunkt gespeichert.", "Every scan is saved as a measurement point.")
+        RecordPhase.STATIONARY -> tr("Stillstand seit $since · GPS $acc", "Stationary for $since · GPS $acc") to
+            tr("Zellen werden jede Minute aufgefrischt. Neue Messpunkte gibt es erst wieder nach Bewegung.", "Cells are refreshed every minute. New measurement points only after moving again.")
+        RecordPhase.PAUSED -> tr("Pausiert", "Paused") to tr("GPS und Zell-Scans sind aus.", "GPS and cell scans are off.")
+        RecordPhase.COARSE -> tr("Ungenaues GPS seit $since · $acc", "Imprecise GPS for $since · $acc") to
             if ((log.lastAccuracyM ?: Float.MAX_VALUE) <= LocationEstimator.MAX_GPS_ERROR) {
-                "Zellen werden erfasst. Die Messpunkte zählen für Schätzung und Abdeckung, aber schwächer gewichtet."
+                tr("Zellen werden erfasst. Die Messpunkte zählen für Schätzung und Abdeckung, aber schwächer gewichtet.", "Cells are recorded. The measurement points count for estimate and coverage, but with lower weight.")
             } else {
-                "Zellen werden erfasst. Messpunkte ungenauer als ${LocationEstimator.MAX_GPS_ERROR.toInt()} m fließen nicht in Schätzung und Abdeckung ein."
+                tr("Zellen werden erfasst. Messpunkte ungenauer als ${LocationEstimator.MAX_GPS_ERROR.toInt()} m fließen nicht in Schätzung und Abdeckung ein.", "Cells are recorded. Measurement points less precise than ${LocationEstimator.MAX_GPS_ERROR.toInt()} m are not used for estimate and coverage.")
             }
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -548,34 +549,34 @@ private fun EndcCard(e: EndcSnapshot) {
                 Text("EN-DC", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    mode?.label ?: "Zustand unbekannt",
+                    mode?.label ?: tr("Zustand unbekannt", "State unknown"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = accent,
                     modifier = Modifier.weight(1f),
                 )
                 e.display?.label?.let {
-                    Text("Anzeige: $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tr("Anzeige: $it", "Display: $it"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 e.anchor?.let { a ->
                     KeyValue(
-                        "LTE-Anker",
+                        tr("LTE-Anker", "LTE anchor"),
                         listOfNotNull(
                             a.nodeId?.let { "eNB $it-${a.sector}" } ?: a.cellId?.let { "ECI $it" },
                             a.band?.label,
                         ).joinToString(" · ").ifEmpty { "–" },
                     )
                 }
-                KeyValue("NR-Zustand", e.nrState.label)
-                KeyValue("EN-DC möglich", yesNo(e.enDcAvailable))
-                KeyValue("NR angekündigt", yesNo(e.nrAvailable))
-                if (e.dcNrRestricted == true) KeyValue("Gesperrt", "ja")
+                KeyValue(tr("NR-Zustand", "NR state"), e.nrState.label)
+                KeyValue(tr("EN-DC möglich", "EN-DC possible"), yesNo(e.enDcAvailable))
+                KeyValue(tr("NR angekündigt", "NR announced"), yesNo(e.nrAvailable))
+                if (e.dcNrRestricted == true) KeyValue(tr("Gesperrt", "Restricted"), tr("ja", "yes"))
             }
             val legs = e.nrLegs
             if (legs.isNotEmpty()) {
-                Text("NR-Zweig", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("NR-Zweig", "NR leg"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 legs.forEach { l ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
@@ -597,7 +598,7 @@ private fun EndcCard(e: EndcSnapshot) {
                 }
             } else if (e.nrRsrp != null) {
                 Text(
-                    "NR-Zweig ohne Zellangaben: SS-RSRP ${e.nrRsrp} dBm" +
+                    tr("NR-Zweig ohne Zellangaben: SS-RSRP ${e.nrRsrp} dBm", "NR leg without cell details: SS-RSRP ${e.nrRsrp} dBm") +
                         (e.nrRsrq?.let { " · SS-RSRQ $it dB" } ?: "") + (e.nrSinr?.let { " · SS-SINR $it dB" } ?: ""),
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
@@ -605,7 +606,7 @@ private fun EndcCard(e: EndcSnapshot) {
             }
             if (!e.serviceStateReadable) {
                 Text(
-                    "Für EN-DC-Details die Freigabe „Telefon“ erteilen (Einstellungen → Apps → Funkstrecke → Berechtigungen).",
+                    tr("Für EN-DC-Details die Freigabe „Telefon“ erteilen (Einstellungen → Apps → Funkstrecke → Berechtigungen).", "Grant the \"Phone\" permission for EN-DC details (Settings → Apps → Funkstrecke → Permissions)."),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.secondary,
                 )
@@ -615,7 +616,7 @@ private fun EndcCard(e: EndcSnapshot) {
 }
 
 private fun yesNo(value: Boolean?): String = when (value) {
-    true -> "ja"
-    false -> "nein"
+    true -> tr("ja", "yes")
+    false -> tr("nein", "no")
     null -> "–"
 }

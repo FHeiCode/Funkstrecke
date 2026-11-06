@@ -47,6 +47,7 @@ Histogramm in der Stationsliste: Abstand je Zelle zwischen eigener Mast-Schätzu
 - *Kandidat*: eigene Schätzung genauer als 1 km
 - *mögliches Artefakt*: alles Übrige (sehr ungenau oder gar nicht verortet)
 Eine Station übernimmt die beste Bewertung ihrer Zellen. Stationsliste: Übersicht mit Balken und Zählern (antippen filtert), Plakette an jeder Station. Karte: zuverlässig = kräftiger Punkt mit Kreis, Kandidat = blasser Punkt, Artefakt = leerer Ring (standardmäßig ausgeblendet, per Chip zuschaltbar). Stationsansicht: Begründung und Spalte „Bewertung“ je Zelle; CSV-Export mit „Bewertung“ und „Begründung“.
+Liegt die OpenCelliD-Position 30 m bis 1 km neben der eigenen Schätzung, zeigt die Karte statt des vollen Kreises einen Sektor in ihre Richtung (der volle Kreis bleibt blass gestrichelt). Die Öffnung entspricht dem Winkel, unter dem der Kreis von der OpenCelliD-Position aus erscheint, begrenzt auf ±30° bis ±75°: breit, wenn OpenCelliD im eigenen Kreis liegt, schmal, wenn deutlich außerhalb.
 
 **Standortschätzung** – pro Station aus allen GPS-markierten Messungen:
 - Pegelmodell mit eigenem Sendepegel je Sektor, gelöst per Levenberg-Marquardt

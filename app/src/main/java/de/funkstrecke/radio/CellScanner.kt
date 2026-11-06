@@ -16,6 +16,7 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -98,7 +99,7 @@ fun qualityLabel(rat: String) = when (rat) {
     "4G" -> "RSRQ"
     "5G" -> "SS-RSRQ"
     "3G" -> "Ec/No"
-    else -> "Qualität"
+    else -> tr("Qualität", "Quality")
 }
 
 object CellScanner {

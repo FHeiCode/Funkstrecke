@@ -6,22 +6,50 @@ import android.net.TrafficStats
 import android.os.SystemClock
 
 /** Was beim Scannen passiert, während telefoniert oder viel übertragen wird. */
-enum class CallBehavior(val label: String, val callDescription: String, val dataDescription: String) {
-    PAUSE(
-        "Pausieren",
-        "Keine Zell-Scans während eines Gesprächs. Die Position läuft weiter, nach dem Auflegen geht es normal weiter.",
-        "Keine Zell-Scans, solange viel übertragen wird. Achtung: Gerade dann liefert die verbundene Zelle Timing Advance.",
-    ),
-    PASSIVE(
-        "Nur mitlesen",
-        "Das Modem wird nicht um neue Messungen gebeten; die App liest nur, was es ohnehin meldet, höchstens alle 30 s.",
-        "Scans im normalen Takt, aber ohne zusätzliche Messanforderung an das Modem. Werte können einige Sekunden alt sein.",
-    ),
-    NORMAL(
-        "Weiter scannen",
-        "Scans wie sonst. Kann auf manchen Geräten zu Aussetzern im Gespräch führen.",
-        "Scans wie sonst. Kann auf manchen Geräten den Datendurchsatz kurz bremsen.",
-    ),
+enum class CallBehavior {
+    PAUSE,
+    PASSIVE,
+    NORMAL,
+    ;
+
+    val label: String
+        get() = when (this) {
+            PAUSE -> tr("Pausieren", "Pause")
+            PASSIVE -> tr("Nur mitlesen", "Listen only")
+            NORMAL -> tr("Weiter scannen", "Keep scanning")
+        }
+
+    val callDescription: String
+        get() = when (this) {
+            PAUSE -> tr(
+                "Keine Zell-Scans während eines Gesprächs. Die Position läuft weiter, nach dem Auflegen geht es normal weiter.",
+                "No cell scans during a call. Location keeps running; scanning resumes normally after hanging up.",
+            )
+            PASSIVE -> tr(
+                "Das Modem wird nicht um neue Messungen gebeten; die App liest nur, was es ohnehin meldet, höchstens alle 30 s.",
+                "The modem is not asked for new measurements; the app only reads what it reports anyway, at most every 30 s.",
+            )
+            NORMAL -> tr(
+                "Scans wie sonst. Kann auf manchen Geräten zu Aussetzern im Gespräch führen.",
+                "Scans as usual. May cause audio dropouts during calls on some devices.",
+            )
+        }
+
+    val dataDescription: String
+        get() = when (this) {
+            PAUSE -> tr(
+                "Keine Zell-Scans, solange viel übertragen wird. Achtung: Gerade dann liefert die verbundene Zelle Timing Advance.",
+                "No cell scans while lots of data is transferred. Note: that is exactly when the serving cell provides timing advance.",
+            )
+            PASSIVE -> tr(
+                "Scans im normalen Takt, aber ohne zusätzliche Messanforderung an das Modem. Werte können einige Sekunden alt sein.",
+                "Scans at the normal rate, but without extra measurement requests to the modem. Values may be a few seconds old.",
+            )
+            NORMAL -> tr(
+                "Scans wie sonst. Kann auf manchen Geräten den Datendurchsatz kurz bremsen.",
+                "Scans as usual. May briefly slow down data throughput on some devices.",
+            )
+        }
 }
 
 /** Warum gerade Rücksicht genommen wird. */

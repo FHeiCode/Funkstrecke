@@ -13,27 +13,33 @@ import android.telephony.TelephonyDisplayInfo
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /** NR-Zustand der LTE-Ankerzelle, wie Android ihn im ServiceState führt. */
-enum class NrState(val label: String, val rank: Int) {
-    UNKNOWN("unbekannt", -1),
-    NONE("kein NR", 0),
-    RESTRICTED("NR gesperrt", 1),
-    NOT_RESTRICTED("NR verfügbar, nicht verbunden", 2),
-    CONNECTED("NR verbunden", 3),
+enum class NrState(private val de: String, private val en: String, val rank: Int) {
+    UNKNOWN("unbekannt", "unknown", -1),
+    NONE("kein NR", "no NR", 0),
+    RESTRICTED("NR gesperrt", "NR restricted", 1),
+    NOT_RESTRICTED("NR verfügbar, nicht verbunden", "NR available, not connected", 2),
+    CONNECTED("NR verbunden", "NR connected", 3),
+    ;
+
+    val label: String get() = tr(de, en)
 }
 
 /** Zusammengefasster 5G-Zustand an einem Ort. Der Name wird so in der Datenbank gespeichert. */
-enum class EndcMode(val label: String, val rank: Int) {
-    NONE("Kein 5G", 0),
-    RESTRICTED("5G gesperrt", 1),
-    AVAILABLE("5G NSA verfügbar", 2),
-    CONNECTED("5G NSA aktiv", 3),
-    SA("5G SA", 4),
+enum class EndcMode(private val de: String, private val en: String, val rank: Int) {
+    NONE("Kein 5G", "No 5G", 0),
+    RESTRICTED("5G gesperrt", "5G restricted", 1),
+    AVAILABLE("5G NSA verfügbar", "5G NSA available", 2),
+    CONNECTED("5G NSA aktiv", "5G NSA active", 3),
+    SA("5G SA", "5G SA", 4),
     ;
+
+    val label: String get() = tr(de, en)
 
     companion object {
         fun of(name: String?): EndcMode? = entries.firstOrNull { it.name == name }

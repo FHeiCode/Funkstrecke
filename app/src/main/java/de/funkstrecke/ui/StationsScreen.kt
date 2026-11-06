@@ -57,8 +57,9 @@ import de.funkstrecke.util.formatAgo
 import de.funkstrecke.data.Reliability
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatDistance
+import de.funkstrecke.util.tr
 
-private const val UNKNOWN_OPERATOR = "Unbekannt"
+private val UNKNOWN_OPERATOR: String get() = tr("Unbekannt", "Unknown")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -113,36 +114,36 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Basisstationen")
+                        Text(tr("Basisstationen", "Base stations"))
                         Text(
-                            "${stations.size} Stationen · $cellCount Zellen · $measurementCount Messwerte",
+                            tr("${stations.size} Stationen · $cellCount Zellen · $measurementCount Messwerte", "${stations.size} stations · $cellCount cells · $measurementCount measurements"),
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = "Mehr") }
+                    IconButton(onClick = { menuOpen = true }) { Icon(Icons.Filled.MoreVert, contentDescription = tr("Mehr", "More")) }
                     DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                         DropdownMenuItem(
-                            text = { Text("Zellen als CSV exportieren") },
+                            text = { Text(tr("Zellen als CSV exportieren", "Export cells as CSV")) },
                             enabled = cellCount > 0,
                             onClick = { menuOpen = false; vm.exportCells() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Messprotokoll als CSV exportieren") },
+                            text = { Text(tr("Messprotokoll als CSV exportieren", "Export measurement log as CSV")) },
                             enabled = measurementCount > 0,
                             onClick = { menuOpen = false; vm.exportMeasurements() },
                         )
                         DropdownMenuItem(
                             text = {
-                                Text(if (ocidKey.isBlank()) "OpenCelliD: Schlüssel in den Einstellungen eintragen" else "Mit OpenCelliD abgleichen")
+                                Text(if (ocidKey.isBlank()) tr("OpenCelliD: Schlüssel in den Einstellungen eintragen", "OpenCelliD: enter key in settings") else tr("Mit OpenCelliD abgleichen", "Compare with OpenCelliD"))
                             },
                             enabled = ocidKey.isNotBlank() && cellCount > 0 && ocidProgress?.running != true,
                             onClick = { menuOpen = false; vm.compareWithOpenCellId() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Alle Daten löschen", color = MaterialTheme.colorScheme.error) },
+                            text = { Text(tr("Alle Daten löschen", "Delete all data"), color = MaterialTheme.colorScheme.error) },
                             enabled = cellCount > 0,
                             onClick = { menuOpen = false; confirmClear = true },
                         )
@@ -161,9 +162,9 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             if (stations.isEmpty()) {
                 item {
                     Column(Modifier.padding(vertical = 48.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Noch keine Zellen erfasst", style = MaterialTheme.typography.titleMedium)
+                        Text(tr("Noch keine Zellen erfasst", "No cells recorded yet"), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "Öffne den Live-Scan. Jede gehörte Zelle landet automatisch hier, gruppiert nach Basisstation.",
+                            tr("Öffne den Live-Scan. Jede gehörte Zelle landet automatisch hier, gruppiert nach Basisstation.", "Open the live scan. Every cell heard ends up here automatically, grouped by base station."),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -179,7 +180,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
                     trailingIcon = {
                         if (query.isNotEmpty()) {
-                            IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, contentDescription = "Suche leeren") }
+                            IconButton(onClick = { query = "" }) { Icon(Icons.Filled.Close, contentDescription = tr("Suche leeren", "Clear search")) }
                         }
                     },
                     singleLine = true,
@@ -218,7 +219,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             if (shown.isEmpty()) {
                 item {
                     Text(
-                        "Keine Station passt zu Suche oder Filter.",
+                        tr("Keine Station passt zu Suche oder Filter.", "No station matches search or filter."),
                         modifier = Modifier.padding(vertical = 24.dp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -231,14 +232,14 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     if (confirmClear) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
-            title = { Text("Alle Daten löschen?") },
-            text = { Text("Alle Zellen, Messwerte und Standortschätzungen werden endgültig gelöscht. Exportiere sie vorher, wenn du sie noch brauchst.") },
+            title = { Text(tr("Alle Daten löschen?", "Delete all data?")) },
+            text = { Text(tr("Alle Zellen, Messwerte und Standortschätzungen werden endgültig gelöscht. Exportiere sie vorher, wenn du sie noch brauchst.", "All cells, measurements and location estimates will be deleted permanently. Export them first if you still need them.")) },
             confirmButton = {
                 TextButton(onClick = { confirmClear = false; vm.clearAll() }) {
-                    Text("Löschen", color = MaterialTheme.colorScheme.error)
+                    Text(tr("Löschen", "Delete"), color = MaterialTheme.colorScheme.error)
                 }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Abbrechen") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(tr("Abbrechen", "Cancel")) } },
         )
     }
 }
@@ -274,32 +275,32 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                     )
                 }
                 val detail = listOfNotNull(
-                    if (station.cells.size > 1) "${station.cells.size} Zellen" else null,
-                    if (station.linked.isNotEmpty()) "+${station.linked.size} vermutet" else null,
+                    if (station.cells.size > 1) tr("${station.cells.size} Zellen", "${station.cells.size} cells") else null,
+                    if (station.linked.isNotEmpty()) tr("+${station.linked.size} vermutet", "+${station.linked.size} presumed") else null,
                     when {
-                        station.endcConnected -> "5G-Anker" + (station.nrBands.takeIf { it.isNotEmpty() }?.joinToString(",", " (", ")") ?: "")
-                        station.endcAvailable -> "5G NSA verfügbar"
+                        station.endcConnected -> tr("5G-Anker", "5G anchor") + (station.nrBands.takeIf { it.isNotEmpty() }?.joinToString(",", " (", ")") ?: "")
+                        station.endcAvailable -> tr("5G NSA verfügbar", "5G NSA available")
                         else -> null
                     },
-                    if (station.inferred) "vermutete Station" else null,
+                    if (station.inferred) tr("vermutete Station", "presumed station") else null,
                     station.bands.joinToString(", ").ifEmpty { null },
-                    station.estimate?.let { "Standort ±${formatDistance(it.radiusM)}" } ?: "kein Standort",
+                    station.estimate?.let { tr("Standort ±${formatDistance(it.radiusM)}", "location ±${formatDistance(it.radiusM)}") } ?: tr("kein Standort", "no location"),
                 ).joinToString(" · ")
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 val ocidDistance = station.ocidDistanceM
                 when {
                     station.ocidUnknown -> Text(
-                        "Nicht in OpenCelliD",
+                        tr("Nicht in OpenCelliD", "Not in OpenCelliD"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.secondary,
                     )
                     ocidDistance != null -> Text(
-                        "OpenCelliD: ${formatDistance(ocidDistance)} von deiner Schätzung",
+                        tr("OpenCelliD: ${formatDistance(ocidDistance)} von deiner Schätzung", "OpenCelliD: ${formatDistance(ocidDistance)} from your estimate"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     station.ocidPosition != null -> Text(
-                        "In OpenCelliD bekannt",
+                        tr("In OpenCelliD bekannt", "Known in OpenCelliD"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -307,13 +308,13 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                 if (station.pciConflicts.isNotEmpty()) {
                     val c = station.pciConflicts.first()
                     Text(
-                        "PCI-Konflikt: PCI ${c.cell.pci} auch bei ${c.otherTitle} (${formatDistance(c.distanceM)})",
+                        tr("PCI-Konflikt: PCI ${c.cell.pci} auch bei ${c.otherTitle} (${formatDistance(c.distanceM)})", "PCI conflict: PCI ${c.cell.pci} also at ${c.otherTitle} (${formatDistance(c.distanceM)})"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
                 Text(
-                    "zuletzt ${formatAgo(station.lastSeen)}",
+                    tr("zuletzt ${formatAgo(station.lastSeen)}", "last ${formatAgo(station.lastSeen)}"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -344,15 +345,15 @@ private fun OcidBanner(p: de.funkstrecke.data.OcidProgress, onCancel: () -> Unit
         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 when {
-                    p.running -> "OpenCelliD-Abgleich: ${p.done} von ${p.total} Zellen · ${p.found} bekannt, ${p.notFound} unbekannt"
-                    p.stopReason != null -> "OpenCelliD-Abgleich gestoppt: ${p.stopReason}. ${p.found} bekannt, ${p.notFound} unbekannt."
-                    p.total == 0 -> "OpenCelliD-Abgleich: alle Zellen sind bereits abgeglichen (gilt 30 Tage)."
-                    else -> "OpenCelliD-Abgleich fertig: ${p.found} bekannt, ${p.notFound} nicht in OpenCelliD."
+                    p.running -> tr("OpenCelliD-Abgleich: ${p.done} von ${p.total} Zellen · ${p.found} bekannt, ${p.notFound} unbekannt", "OpenCelliD comparison: ${p.done} of ${p.total} cells · ${p.found} known, ${p.notFound} unknown")
+                    p.stopReason != null -> tr("OpenCelliD-Abgleich gestoppt: ${p.stopReason}. ${p.found} bekannt, ${p.notFound} unbekannt.", "OpenCelliD comparison stopped: ${p.stopReason}. ${p.found} known, ${p.notFound} unknown.")
+                    p.total == 0 -> tr("OpenCelliD-Abgleich: alle Zellen sind bereits abgeglichen (gilt 30 Tage).", "OpenCelliD comparison: all cells already compared (valid for 30 days).")
+                    else -> tr("OpenCelliD-Abgleich fertig: ${p.found} bekannt, ${p.notFound} nicht in OpenCelliD.", "OpenCelliD comparison done: ${p.found} known, ${p.notFound} not in OpenCelliD.")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.weight(1f),
             )
-            if (p.running) TextButton(onClick = onCancel) { Text("Abbrechen") }
+            if (p.running) TextButton(onClick = onCancel) { Text(tr("Abbrechen", "Cancel")) }
         }
     }
 }
@@ -368,7 +369,7 @@ private fun ReliabilitySummary(counts: Map<Reliability, Int>, selected: Reliabil
     if (total == 0) return
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Bewertung der Stationen", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text(tr("Bewertung der Stationen", "Station rating"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -410,8 +411,8 @@ private fun ReliabilitySummary(counts: Map<Reliability, Int>, selected: Reliabil
                 }
             }
             Text(
-                "Zuverlässig: Standort genauer als ±200 m oder höchstens 200 m von OpenCelliD entfernt. " +
-                    "Kandidat: genauer als ±1 km. Übrige: mögliche Artefakte (kein oder sehr unsicherer Standort).",
+                tr("Zuverlässig: Standort genauer als ±200 m oder höchstens 200 m von OpenCelliD entfernt. ", "Reliable: location better than ±200 m or at most 200 m from OpenCelliD. ") +
+                    tr("Kandidat: genauer als ±1 km. Übrige: mögliche Artefakte (kein oder sehr unsicherer Standort).", "Candidate: better than ±1 km. Others: potential artefacts (no or very uncertain location)."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

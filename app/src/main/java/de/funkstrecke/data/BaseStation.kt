@@ -1,6 +1,7 @@
 package de.funkstrecke.data
 
 import de.funkstrecke.radio.Operators
+import de.funkstrecke.util.tr
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -27,9 +28,12 @@ data class CellCentroid(
     val n: Int,
 )
 
-enum class LinkConfidence(val label: String) {
-    LIKELY("wahrscheinlich"),
-    POSSIBLE("möglich"),
+enum class LinkConfidence {
+    LIKELY,
+    POSSIBLE,
+    ;
+
+    val label: String get() = if (this == LIKELY) tr("wahrscheinlich", "likely") else tr("möglich", "possible")
 }
 
 /** Zelle ohne Cell-ID, die über ihre PCI-Gruppe einer bekannten Station zugeordnet wurde. */
@@ -128,7 +132,7 @@ data class BaseStation(
         get() {
             val first = cells.first()
             return when {
-                inferred -> "PCI-Gruppe ${pciGroups.joinToString("/")}"
+                inferred -> tr("PCI-Gruppe ", "PCI group ") + pciGroups.joinToString("/")
                 nodeId != null -> "eNB $nodeId"
                 first.cellId != null && rat == "5G" -> "NCI ${first.cellId}"
                 first.cellId != null -> "CID ${first.cellId}"

@@ -2,6 +2,7 @@ package de.funkstrecke.data
 
 import de.funkstrecke.radio.Operators
 import de.funkstrecke.ui.theme.signalLevel
+import de.funkstrecke.util.tr
 
 /*
  * Abdeckungskarte: Messpunkte mit genauer Position werden auf ein Raster von etwa 50 × 50 m
@@ -26,7 +27,7 @@ data class CoverageTile(
     val n: Int,
     val lastTime: Long,
 ) {
-    val operatorName: String get() = Operators.name(mcc, mnc) ?: if (mcc != null) "$mcc-$mnc" else "Unbekannt"
+    val operatorName: String get() = Operators.name(mcc, mnc) ?: if (mcc != null) "$mcc-$mnc" else tr("Unbekannt", "Unknown")
 }
 
 /** Ein Feld auf der Karte, für einen Betreiber zusammengefasst. */
@@ -82,7 +83,7 @@ data class EndcTile(
     val endcRank: Int,
     val n: Int,
 ) {
-    val operatorName: String get() = Operators.name(mcc, mnc) ?: if (mcc != null) "$mcc-$mnc" else "Unbekannt"
+    val operatorName: String get() = Operators.name(mcc, mnc) ?: if (mcc != null) "$mcc-$mnc" else tr("Unbekannt", "Unknown")
     val south: Double get() = latIdx * COVERAGE_LAT_STEP
     val north: Double get() = (latIdx + 1) * COVERAGE_LAT_STEP
     val west: Double get() = lonIdx * COVERAGE_LON_STEP

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.distanceM
 import de.funkstrecke.util.formatDistance
+import de.funkstrecke.util.tr
 
 /** Abweichung einer Zelle: eigene Mast-Schätzung der Station gegen OpenCelliD-Position der Zelle. */
 data class OcidDeviation(
@@ -47,7 +48,7 @@ data class OcidDeviation(
 
 /** Klassen des Histogramms: Obergrenzen in m (die letzte ist offen). */
 private val binEdges = listOf(50.0, 100.0, 200.0, 500.0, 1_000.0, 2_000.0, Double.MAX_VALUE)
-private val binLabels = listOf("<50", "50–\n100", "100–\n200", "200–\n500", "0,5–\n1 km", "1–\n2 km", ">2 km")
+private val binLabels get() = listOf("<50", "50–\n100", "100–\n200", "200–\n500", tr("0,5–\n1 km", "0.5–\n1 km"), "1–\n2 km", ">2 km")
 
 fun ocidBinOf(distanceM: Double): Int = binEdges.indexOfFirst { distanceM < it }.coerceAtLeast(0)
 
@@ -86,12 +87,12 @@ fun OcidHistogramCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("Abweichung zu OpenCelliD", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(tr("Abweichung zu OpenCelliD", "Deviation from OpenCelliD"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(
                         buildString {
-                            append("${deviations.size} Zellen")
+                            append(tr("${deviations.size} Zellen", "${deviations.size} cells"))
                             median?.let { append(" · Median ${formatDistance(it)}") }
-                            if (deviations.isNotEmpty()) append(" · ${within * 100 / deviations.size} % im eigenen Unsicherheitskreis")
+                            if (deviations.isNotEmpty()) append(tr(" · ${within * 100 / deviations.size} % im eigenen Unsicherheitskreis", " · ${within * 100 / deviations.size} % within own uncertainty circle"))
                         },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -99,14 +100,14 @@ fun OcidHistogramCard(
                 }
                 Icon(
                     if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (expanded) "Einklappen" else "Ausklappen",
+                    contentDescription = if (expanded) tr("Einklappen", "Collapse") else tr("Ausklappen", "Expand"),
                 )
             }
             if (!expanded) return@Column
 
             if (deviations.isEmpty()) {
                 Text(
-                    "Noch keine Vergleichswerte: Dafür braucht eine Station deine Standortschätzung und mindestens eine in OpenCelliD gefundene Zelle.",
+                    tr("Noch keine Vergleichswerte: Dafür braucht eine Station deine Standortschätzung und mindestens eine in OpenCelliD gefundene Zelle.", "No comparison values yet: a station needs your location estimate and at least one cell found in OpenCelliD."),
                     style = MaterialTheme.typography.bodySmall,
                 )
             } else {
@@ -163,9 +164,9 @@ fun OcidHistogramCard(
                 }
                 Text(
                     if (selectedBin != null) {
-                        "Liste zeigt nur Stationen mit einer Zelle in dieser Klasse. Erneut tippen zum Aufheben."
+                        tr("Liste zeigt nur Stationen mit einer Zelle in dieser Klasse. Erneut tippen zum Aufheben.", "The list only shows stations with a cell in this class. Tap again to clear.")
                     } else {
-                        "Abstand in m zwischen deiner Mast-Schätzung und der OpenCelliD-Position je Zelle. Balken antippen, um die Liste zu filtern."
+                        tr("Abstand in m zwischen deiner Mast-Schätzung und der OpenCelliD-Position je Zelle. Balken antippen, um die Liste zu filtern.", "Distance in m between your mast estimate and the OpenCelliD position per cell. Tap a bar to filter the list.")
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -182,14 +183,14 @@ fun OcidHistogramCard(
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "$notFoundCells ${if (notFoundCells == 1) "Zelle" else "Zellen"} nicht in OpenCelliD",
+                        if (notFoundCells == 1) tr("1 Zelle nicht in OpenCelliD", "1 cell not in OpenCelliD") else tr("$notFoundCells Zellen nicht in OpenCelliD", "$notFoundCells cells not in OpenCelliD"),
                         style = MaterialTheme.typography.labelMedium,
                     )
                 }
             }
             Text(
-                "OpenCelliD mittelt Nutzer-Messorte und liegt deshalb meist in Richtung der Hauptversorgung, nicht am Mast. " +
-                    "Einige hundert Meter Abweichung sind normal.",
+                tr("OpenCelliD mittelt Nutzer-Messorte und liegt deshalb meist in Richtung der Hauptversorgung, nicht am Mast. ", "OpenCelliD averages user measurement locations and therefore usually lies in the main coverage direction, not at the mast. ") +
+                    tr("Einige hundert Meter Abweichung sind normal.", "A deviation of a few hundred metres is normal."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

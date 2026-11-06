@@ -49,11 +49,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.BaseStation
 import de.funkstrecke.data.CellEntity
 import de.funkstrecke.data.LinkConfidence
-import de.funkstrecke.locate.LocationEstimator
 import de.funkstrecke.data.MeasurementEntity
+import de.funkstrecke.data.ocidSector
 import de.funkstrecke.data.pciGroup
 import de.funkstrecke.data.pciPss
 import de.funkstrecke.data.supportsPciGroups
+import de.funkstrecke.locate.LocationEstimator
+import de.funkstrecke.locate.localizeMethod
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
 import de.funkstrecke.ui.theme.signalLevel
@@ -61,6 +63,7 @@ import de.funkstrecke.util.formatCoordinates
 import de.funkstrecke.util.formatDateTime
 import de.funkstrecke.util.formatDistance
 import de.funkstrecke.util.formatTime
+import de.funkstrecke.util.tr
 import java.util.Locale
 import kotlin.math.floor
 
@@ -87,12 +90,12 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
             TopAppBar(
                 title = { Text(station?.title ?: "Station", fontFamily = FontFamily.Monospace) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück") }
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Zurück", "Back")) }
                 },
                 actions = {
                     if (station != null && measurements.isNotEmpty()) {
                         IconButton(onClick = { vm.recompute(station) }) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Standort neu berechnen")
+                            Icon(Icons.Filled.Refresh, contentDescription = tr("Standort neu berechnen", "Recalculate location"))
                         }
                     }
                 },
@@ -101,7 +104,7 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
     ) { padding ->
         if (station == null) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Station nicht gefunden.")
+                Text(tr("Station nicht gefunden.", "Station not found."))
             }
             return@Scaffold
         }
@@ -118,7 +121,7 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 Spacer(Modifier.width(10.dp))
                 OperatorDot(station.operatorName)
                 Spacer(Modifier.width(6.dp))
-                Text(station.operatorName ?: "Unbekannter Betreiber", style = MaterialTheme.typography.titleMedium)
+                Text(station.operatorName ?: tr("Unbekannter Betreiber", "Unknown operator"), style = MaterialTheme.typography.titleMedium)
             }
             val assessment = station.assessment
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -127,47 +130,47 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 Text(assessment.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            Section("Kennung") {
+            Section(tr("Kennung", "Identity")) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     KeyValue("MCC", station.mcc ?: "–")
                     KeyValue("MNC", station.mnc ?: "–")
                     KeyValue(if (station.rat == "4G" || station.rat == "5G") "TAC" else "LAC", station.area?.toString() ?: "–")
-                    station.nodeId?.let { KeyValue("eNodeB-ID", it.toString()) }
-                    if (station.pciGroups.isNotEmpty()) KeyValue("PCI-Gruppe (SSS)", station.pciGroups.joinToString(", "))
-                    KeyValue("Technik", station.rat)
-                    KeyValue("Bänder", station.bands.joinToString(", ").ifEmpty { "–" })
-                    station.minDistanceM?.let { KeyValue("Min. Abstand (TA)", formatDistance(it.toDouble())) }
+                    station.nodeId?.let { KeyValue(tr("eNodeB-ID", "eNodeB ID"), it.toString()) }
+                    if (station.pciGroups.isNotEmpty()) KeyValue(tr("PCI-Gruppe (SSS)", "PCI group (SSS)"), station.pciGroups.joinToString(", "))
+                    KeyValue(tr("Technik", "Technology"), station.rat)
+                    KeyValue(tr("Bänder", "Bands"), station.bands.joinToString(", ").ifEmpty { "–" })
+                    station.minDistanceM?.let { KeyValue(tr("Min. Abstand (TA)", "Min. distance (TA)"), formatDistance(it.toDouble())) }
                 }
                 if (station.inferred) {
                     Text(
-                        "Vermutete Station: Diese Zellen melden keine Cell-ID. Sie wurden zusammengefasst, weil sie dieselbe " +
-                            "PCI-Gruppe haben und an nahe beieinander liegenden Orten gemessen wurden.",
+                        tr("Vermutete Station: Diese Zellen melden keine Cell-ID. Sie wurden zusammengefasst, weil sie dieselbe ", "Presumed station: these cells report no cell ID. They were grouped because they share the same ") +
+                            tr("PCI-Gruppe haben und an nahe beieinander liegenden Orten gemessen wurden.", "PCI group and were measured at locations close to each other."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary,
                     )
                 }
                 if (station.plmnInferred) {
                     Text(
-                        "MCC/MNC wurden nicht von der Zelle gemeldet, sondern von der verbundenen Zelle übernommen.",
+                        tr("MCC/MNC wurden nicht von der Zelle gemeldet, sondern von der verbundenen Zelle übernommen.", "MCC/MNC were not reported by the cell but taken from the serving cell."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
-                    "Erstmals ${formatDateTime(station.firstSeen)} · zuletzt ${formatDateTime(station.lastSeen)} · ${station.samples} Scans",
+                    tr("Erstmals ${formatDateTime(station.firstSeen)} · zuletzt ${formatDateTime(station.lastSeen)} · ${station.samples} Scans", "First ${formatDateTime(station.firstSeen)} · last ${formatDateTime(station.lastSeen)} · ${station.samples} scans"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            Section("Geschätzter Standort") {
+            Section(tr("Geschätzter Standort", "Estimated location")) {
                 val e = station.estimate
                 if (e == null) {
                     Text(
                         if (measurements.isEmpty()) {
-                            "Noch keine Messung mit GPS. Starte im Live-Tab die Aufzeichnung und bewege dich in der Umgebung dieser Station."
+                            tr("Noch keine Messung mit GPS. Starte im Live-Tab die Aufzeichnung und bewege dich in der Umgebung dieser Station.", "No GPS measurement yet. Start recording in the Live tab and move around near this station.")
                         } else {
-                            "Zu wenige brauchbare Messungen (GPS-Genauigkeit besser als 30 m nötig)."
+                            tr("Zu wenige brauchbare Messungen (GPS-Genauigkeit besser als 30 m nötig).", "Too few usable measurements (GPS accuracy better than 30 m required).")
                         },
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -175,42 +178,43 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                     EstimateMap(station, measurements)
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         KeyValue("Position", formatCoordinates(e.latitude, e.longitude))
-                        KeyValue("Unsicherheit (95 %)", "±${formatDistance(e.radiusM)}")
-                        KeyValue("Messorte", e.spots.toString())
-                        KeyValue("Messwerte", e.measurements.toString())
+                        KeyValue(tr("Unsicherheit (95 %)", "Uncertainty (95 %)"), "±${formatDistance(e.radiusM)}")
+                        KeyValue(tr("Messorte", "Measurement spots"), e.spots.toString())
+                        KeyValue(tr("Messwerte", "Measurements"), e.measurements.toString())
                     }
-                    Text(e.method, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+                    Text(localizeMethod(e.method), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
                     Text(
-                        "Je mehr Richtungen deine Messungen abdecken, desto kleiner wird der Kreis. " +
-                            "Am besten die Station einmal umrunden. Gebäude und Antennenausrichtung verfälschen die Pegel; " +
-                            "die Schätzung ist ein Suchgebiet, kein Kataster.",
+                        tr("Je mehr Richtungen deine Messungen abdecken, desto kleiner wird der Kreis. ", "The more directions your measurements cover, the smaller the circle. ") +
+                            tr("Am besten die Station einmal umrunden. Gebäude und Antennenausrichtung verfälschen die Pegel; ", "Ideally circle the station once. Buildings and antenna orientation distort the signal levels; ") +
+                            tr("die Schätzung ist ein Suchgebiet, kein Kataster.", "the estimate is a search area, not a land register."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     OutlinedButton(onClick = { openInMaps(context, e.latitude, e.longitude, station.title) }) {
                         Icon(Icons.Filled.Map, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("In Karten-App öffnen")
+                        Text(tr("In Karten-App öffnen", "Open in maps app"))
                     }
                 }
             }
 
             if (station.pciConflicts.isNotEmpty()) {
-                Section("PCI-Konflikt") {
+                Section(tr("PCI-Konflikt", "PCI conflict")) {
                     station.pciConflicts.forEach { c ->
                         Text(
-                            "Sektor ${c.cell.sector ?: c.cell.cellId} (PCI ${c.cell.pci}, ${c.cell.band ?: "?"}, ARFCN ${c.cell.arfcn}) " +
-                                "↔ ${c.otherTitle} Sektor ${c.other.sector ?: c.other.cellId} · ${formatDistance(c.distanceM)} entfernt",
+                            tr("Sektor ", "Sector ") + "${c.cell.sector ?: c.cell.cellId} (PCI ${c.cell.pci}, ${c.cell.band ?: "?"}, ARFCN ${c.cell.arfcn}) " +
+                                "↔ ${c.otherTitle} " + tr("Sektor", "sector") + " ${c.other.sector ?: c.other.cellId} · " +
+                                tr("${formatDistance(c.distanceM)} entfernt", "${formatDistance(c.distanceM)} apart"),
                             style = MaterialTheme.typography.bodySmall,
                             fontFamily = FontFamily.Monospace,
                             color = MaterialTheme.colorScheme.error,
                         )
                     }
                     Text(
-                        "Zwei verschiedene Zellen nutzen dieselbe PCI auf demselben Träger und liegen nahe beieinander. " +
-                            "Handys können sie verwechseln; Übergaben zwischen ihnen können fehlschlagen. " +
-                            "Gleiche PCIs auf anderen Bändern oder Trägern sind dagegen üblich und werden nicht gemeldet. " +
-                            "Grundlage sind die geschätzten Standorte; bei großen Unsicherheitskreisen ist die Warnung entsprechend unsicher.",
+                        tr("Zwei verschiedene Zellen nutzen dieselbe PCI auf demselben Träger und liegen nahe beieinander. ", "Two different cells use the same PCI on the same carrier and are close to each other. ") +
+                            tr("Handys können sie verwechseln; Übergaben zwischen ihnen können fehlschlagen. ", "Phones may confuse them; handovers between them may fail. ") +
+                            tr("Gleiche PCIs auf anderen Bändern oder Trägern sind dagegen üblich und werden nicht gemeldet. ", "Identical PCIs on other bands or carriers, by contrast, are common and not reported. ") +
+                            tr("Grundlage sind die geschätzten Standorte; bei großen Unsicherheitskreisen ist die Warnung entsprechend unsicher.", "It is based on the estimated locations; with large uncertainty circles the warning is correspondingly uncertain."),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -227,22 +231,22 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 OcidSection(station, vm)
             }
 
-            Section(if (station.cells.size == 1) "Zelle" else "Zellen (${station.cells.size})") {
+            Section(if (station.cells.size == 1) tr("Zelle", "Cell") else tr("Zellen (${station.cells.size})", "Cells (${station.cells.size})")) {
                 CellTable(station.rat, station.cells, station)
             }
 
             if (station.linked.isNotEmpty()) {
-                Section("Vermutlich zugehörig (${station.linked.size})") {
+                Section(tr("Vermutlich zugehörig (${station.linked.size})", "Probably belonging (${station.linked.size})")) {
                     LinkedCells(station)
                 }
             }
 
             if (measurements.isNotEmpty()) {
-                Section("Letzte Messungen") {
+                Section(tr("Letzte Messungen", "Latest measurements")) {
                     measurements.take(15).forEach { m -> MeasurementRow(station, m) }
                     if (measurements.size > 15) {
                         Text(
-                            "Alle Messwerte über „Messprotokoll als CSV exportieren“ in der Stationsliste.",
+                            tr("Alle Messwerte über „Messprotokoll als CSV exportieren“ in der Stationsliste.", "All measurements via \"Export measurement log as CSV\" in the station list."),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -272,13 +276,14 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
                 val cell = station.cells.firstOrNull { it.id == o.cellKey }
                 MapDot(
                     o.latitude!!, o.longitude!!, OcidColor, sizeDp = 13,
-                    title = "OpenCelliD · Sektor ${cell?.sector ?: cell?.cellId ?: "?"}",
-                    snippet = listOfNotNull(o.samples?.let { "$it Messungen" }, o.rangeM?.let { "Reichweite ${formatDistance(it.toDouble())}" })
+                    title = "OpenCelliD · " + tr("Sektor", "sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}",
+                    snippet = listOfNotNull(o.samples?.let { tr("$it Messungen", "$it measurements") }, o.rangeM?.let { tr("Reichweite ${formatDistance(it.toDouble())}", "range ${formatDistance(it.toDouble())}") })
                         .joinToString(" · "),
                 )
             }
     }
-    val circles = remember(e) { listOf(MapCircle(e.latitude, e.longitude, e.radiusM, color)) }
+    val sector = ocidSector(station)
+    val circles = remember(e, sector) { listOf(MapCircle(e.latitude, e.longitude, e.radiusM, color, sector)) }
     OsmMap(
         dots = dots,
         circles = circles,
@@ -289,7 +294,8 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
             .clip(RoundedCornerShape(12.dp)),
     )
     Text(
-        "Punkte: deine Messorte, grün = starker, rot = schwacher Pegel. Großer Punkt und Kreis: geschätzter Mast.",
+        tr("Punkte: deine Messorte, grün = starker, rot = schwacher Pegel. Großer Punkt und Kreis: geschätzter Mast.", "Dots: your measurement spots, green = strong, red = weak signal. Large dot and circle: estimated mast.") +
+            if (sector != null) tr(" Weicht OpenCelliD (lila) etwas ab, zeigt statt des Kreises ein Sektor zur OpenCelliD-Position: Dort liegt der Mast am ehesten.", " If OpenCelliD (purple) is a bit off, a sector toward the OpenCelliD position replaces the circle: the mast is most likely there.") else "",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -299,11 +305,11 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
 private fun CellTable(rat: String, cells: List<CellEntity>, station: BaseStation) {
     val groups = supportsPciGroups(rat)
     val headers = listOf(
-        if (rat == "4G") "Sektor" else "Nr.",
+        if (rat == "4G") tr("Sektor", "Sector") else tr("Nr.", "No."),
         if (rat == "5G") "NCI" else if (rat == "4G") "ECI" else "CID",
         if (rat == "3G") "PSC" else if (rat == "2G") "BSIC" else "PCI",
         if (groups) "SSS/PSS" else "",
-        "Band", "ARFCN", "max dBm", "Scans", "Bewertung",
+        "Band", "ARFCN", "max dBm", "Scans", tr("Bewertung", "Rating"),
     )
     val rows = cells.mapIndexed { i, c ->
         listOf(
@@ -314,7 +320,7 @@ private fun CellTable(rat: String, cells: List<CellEntity>, station: BaseStation
             listOfNotNull(c.band, c.bandMhz?.let { "$it MHz" }).joinToString(" ").ifEmpty { "–" },
             c.arfcn?.toString() ?: "–",
             c.bestDbm?.toString() ?: "–",
-            if (c.servingSamples > 0) "${c.samples} (${c.servingSamples}×v)" else c.samples.toString(),
+            if (c.servingSamples > 0) tr("${c.samples} (${c.servingSamples}×v)", "${c.samples} (${c.servingSamples}×s)") else c.samples.toString(),
             de.funkstrecke.data.assessCell(station, c).reliability.short,
         )
     }
@@ -357,9 +363,9 @@ private fun CellTable(rat: String, cells: List<CellEntity>, station: BaseStation
     }
     Text(
         if (groups) {
-            "v = als verbundene Zelle gesehen · SSS/PSS = PCI-Gruppe N_ID1 / Index N_ID2 (PCI = 3·SSS + PSS)"
+            tr("v = als verbundene Zelle gesehen · SSS/PSS = PCI-Gruppe N_ID1 / Index N_ID2 (PCI = 3·SSS + PSS)", "s = seen as serving cell · SSS/PSS = PCI group N_ID1 / index N_ID2 (PCI = 3·SSS + PSS)")
         } else {
-            "v = als verbundene Zelle gesehen"
+            tr("v = als verbundene Zelle gesehen", "s = seen as serving cell")
         },
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -439,21 +445,26 @@ private fun LinkedCells(station: BaseStation) {
                     val reason = buildString {
                         val same = l.sameSectorAs
                         if (same != null) {
-                            append("Gleiche PCI wie Sektor ${same.sector ?: same.cellId}: vermutlich derselbe Sektor auf einem anderen Träger.")
+                            append(
+                                tr(
+                                    "Gleiche PCI wie Sektor ${same.sector ?: same.cellId}: vermutlich derselbe Sektor auf einem anderen Träger.",
+                                    "Same PCI as sector ${same.sector ?: same.cellId}: probably the same sector on another carrier.",
+                                ),
+                            )
                         } else {
-                            append("Gleiche PCI-Gruppe, anderer PSS-Index: vermutlich ein weiterer Sektor.")
+                            append(tr("Gleiche PCI-Gruppe, anderer PSS-Index: vermutlich ein weiterer Sektor.", "Same PCI group, different PSS index: probably another sector."))
                         }
-                        l.distanceM?.let { append(" Messorte ${formatDistance(it)} vom Standort entfernt.") }
-                            ?: append(" Noch ohne GPS-Messung, nur über die PCI-Gruppe zugeordnet.")
+                        l.distanceM?.let { append(tr(" Messorte ${formatDistance(it)} vom Standort entfernt.", " Measurement spots ${formatDistance(it)} from the location.")) }
+                            ?: append(tr(" Noch ohne GPS-Messung, nur über die PCI-Gruppe zugeordnet.", " No GPS measurement yet, assigned via PCI group only."))
                     }
                     Text(reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
         Text(
-            "Diese Zellen melden keine Cell-ID. Zugeordnet nach der üblichen Netzplanung, bei der alle Sektoren " +
-                "eines Standorts dieselbe PCI-Gruppe (SSS) nutzen, und geprüft über den Abstand der Messorte. " +
-                "PCIs werden in einigen Kilometern Entfernung wiederverwendet; die Zuordnung ist deshalb eine Vermutung.",
+            tr("Diese Zellen melden keine Cell-ID. Zugeordnet nach der üblichen Netzplanung, bei der alle Sektoren ", "These cells report no cell ID. Assigned according to usual network planning, where all sectors ") +
+                tr("eines Standorts dieselbe PCI-Gruppe (SSS) nutzen, und geprüft über den Abstand der Messorte. ", "of a site use the same PCI group (SSS), and checked via the distance of the measurement spots. ") +
+                tr("PCIs werden in einigen Kilometern Entfernung wiederverwendet; die Zuordnung ist deshalb eine Vermutung.", "PCIs are reused a few kilometres away; the assignment is therefore an assumption."),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -466,21 +477,22 @@ private fun EndcSection(station: BaseStation) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             when {
-                station.endcConnected -> "Diese Station diente als LTE-Anker für 5G NSA: Das Handy war über sie mit einer NR-Zelle verbunden."
-                else -> "Diese Station kündigt 5G NSA an, eine NR-Verbindung wurde aber noch nicht gemessen."
+                station.endcConnected -> tr("Diese Station diente als LTE-Anker für 5G NSA: Das Handy war über sie mit einer NR-Zelle verbunden.", "This station served as LTE anchor for 5G NSA: the phone was connected to an NR cell through it.")
+                else -> tr("Diese Station kündigt 5G NSA an, eine NR-Verbindung wurde aber noch nicht gemessen.", "This station announces 5G NSA, but no NR connection has been measured yet.")
             },
             style = MaterialTheme.typography.bodyMedium,
         )
         station.cells.filter { it.endcAvailableSamples > 0 }.forEach { c ->
             Text(
-                "Sektor ${c.sector ?: c.cellId ?: "?"} · ${c.band ?: ""}: verbunden in ${c.endcConnectedSamples}, " +
-                    "verfügbar in ${c.endcAvailableSamples} von ${c.servingSamples} Scans als verbundene Zelle",
+                tr("Sektor", "Sector") + " ${c.sector ?: c.cellId ?: "?"} · ${c.band ?: ""}: " +
+                    tr("verbunden in ${c.endcConnectedSamples}, ", "connected in ${c.endcConnectedSamples}, ") +
+                    tr("verfügbar in ${c.endcAvailableSamples} von ${c.servingSamples} Scans als verbundene Zelle", "available in ${c.endcAvailableSamples} of ${c.servingSamples} scans as serving cell"),
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = FontFamily.Monospace,
             )
         }
         if (station.nrLegs.isNotEmpty()) {
-            Text("NR-Zweige", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr("NR-Zweige", "NR legs"), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -509,8 +521,8 @@ private fun EndcSection(station: BaseStation) {
                 }
             }
             Text(
-                "Der NR-Zweig steht meist am selben Mast, kann aber auch von einem anderen Standort kommen. " +
-                    "Er fließt deshalb nicht in die Standortschätzung dieser Station ein.",
+                tr("Der NR-Zweig steht meist am selben Mast, kann aber auch von einem anderen Standort kommen. ", "The NR leg is usually on the same mast but may also come from another site. ") +
+                    tr("Er fließt deshalb nicht in die Standortschätzung dieser Station ein.", "It is therefore not used in this station's location estimate."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -530,12 +542,12 @@ private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when {
             lookupable.isEmpty() -> Text(
-                "Diese Station hat keine Zelle mit vollständiger Kennung (MCC, MNC, TAC, Cell-ID). OpenCelliD kann sie nicht nachschlagen.",
+                tr("Diese Station hat keine Zelle mit vollständiger Kennung (MCC, MNC, TAC, Cell-ID). OpenCelliD kann sie nicht nachschlagen.", "This station has no cell with a complete identity (MCC, MNC, TAC, cell ID). OpenCelliD cannot look it up."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             station.ocid.isEmpty() -> Text(
-                "Noch nicht abgeglichen.",
+                tr("Noch nicht abgeglichen.", "Not compared yet."),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -543,32 +555,32 @@ private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
                 val distance = station.ocidDistanceM
                 Text(
                     when {
-                        station.ocidUnknown -> "Keine Zelle dieser Station ist in OpenCelliD verzeichnet. Sie ist neu oder wurde dort noch nicht erfasst."
-                        distance != null -> "Die OpenCelliD-Position liegt ${formatDistance(distance)} von deiner Schätzung entfernt."
-                        else -> "In OpenCelliD verzeichnet. Für einen Vergleich fehlt noch deine Standortschätzung."
+                        station.ocidUnknown -> tr("Keine Zelle dieser Station ist in OpenCelliD verzeichnet. Sie ist neu oder wurde dort noch nicht erfasst.", "No cell of this station is listed in OpenCelliD. It is new or has not been recorded there yet.")
+                        distance != null -> tr("Die OpenCelliD-Position liegt ${formatDistance(distance)} von deiner Schätzung entfernt.", "The OpenCelliD position is ${formatDistance(distance)} from your estimate.")
+                        else -> tr("In OpenCelliD verzeichnet. Für einen Vergleich fehlt noch deine Standortschätzung.", "Listed in OpenCelliD. Your location estimate is still missing for a comparison.")
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 station.ocid.forEach { o ->
                     val cell = station.cells.firstOrNull { it.id == o.cellKey }
                     Text(
-                        "Sektor ${cell?.sector ?: cell?.cellId ?: "?"}: " + when (o.status) {
+                        tr("Sektor", "Sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}: " + when (o.status) {
                             de.funkstrecke.data.OcidEntity.STATUS_FOUND -> listOfNotNull(
                                 formatCoordinates(o.latitude ?: 0.0, o.longitude ?: 0.0),
-                                o.samples?.let { "$it Messungen" },
-                                o.rangeM?.let { "Reichweite ${formatDistance(it.toDouble())}" },
+                                o.samples?.let { tr("$it Messungen", "$it measurements") },
+                                o.rangeM?.let { tr("Reichweite ${formatDistance(it.toDouble())}", "range ${formatDistance(it.toDouble())}") },
                             ).joinToString(" · ")
-                            de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND -> "nicht in OpenCelliD"
-                            else -> "Fehler: ${o.message ?: "unbekannt"}"
+                            de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND -> tr("nicht in OpenCelliD", "not in OpenCelliD")
+                            else -> tr("Fehler: ", "Error: ") + (o.message ?: tr("unbekannt", "unknown"))
                         } + " (${formatDateTime(o.fetchedAt)})",
                         style = MaterialTheme.typography.bodySmall,
                         fontFamily = FontFamily.Monospace,
                     )
                 }
                 Text(
-                    "OpenCelliD mittelt die Orte, an denen Nutzer die Zelle gemessen haben. Das ist meist nicht der Mast, " +
-                        "sondern liegt in Richtung der Hauptversorgung. Abweichungen von einigen hundert Metern sind normal. " +
-                        "Daten: OpenCelliD, CC BY-SA 4.0.",
+                    tr("OpenCelliD mittelt die Orte, an denen Nutzer die Zelle gemessen haben. Das ist meist nicht der Mast, ", "OpenCelliD averages the places where users measured the cell. That is usually not the mast, ") +
+                        tr("sondern liegt in Richtung der Hauptversorgung. Abweichungen von einigen hundert Metern sind normal. ", "but lies in the main coverage direction. Deviations of a few hundred metres are normal. ") +
+                        tr("Daten: OpenCelliD, CC BY-SA 4.0.", "Data: OpenCelliD, CC BY-SA 4.0."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -577,7 +589,7 @@ private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
         if (lookupable.isNotEmpty()) {
             if (key.isBlank()) {
                 Text(
-                    "Für den Abgleich einen OpenCelliD-Schlüssel in den Einstellungen eintragen.",
+                    tr("Für den Abgleich einen OpenCelliD-Schlüssel in den Einstellungen eintragen.", "Enter an OpenCelliD key in settings for the comparison."),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary,
                 )
@@ -585,7 +597,7 @@ private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
                 OutlinedButton(
                     onClick = { vm.compareWithOpenCellId(station) },
                     enabled = progress?.running != true,
-                ) { Text(if (station.ocid.isEmpty()) "Mit OpenCelliD abgleichen" else "Erneut abgleichen") }
+                ) { Text(if (station.ocid.isEmpty()) tr("Mit OpenCelliD abgleichen", "Compare with OpenCelliD") else tr("Erneut abgleichen", "Compare again")) }
             }
         }
     }

@@ -20,8 +20,10 @@ import com.google.android.gms.location.LocationServices
 import de.funkstrecke.MainActivity
 import de.funkstrecke.R
 import de.funkstrecke.util.HomeStore
+import de.funkstrecke.util.Lang
 import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.PauseStore
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -122,13 +124,17 @@ object Geofencer {
         val code = (e as? ApiException)?.statusCode
         return when (code) {
             GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE ->
-                "Geofencing ist gerade nicht verfügbar. Schalte den Standort ein und in den Standorteinstellungen " +
-                    "„Google Standortgenauigkeit“ (Verbesserte Standortgenauigkeit)."
+                tr(
+                    "Geofencing ist gerade nicht verfügbar. Schalte den Standort ein und in den Standorteinstellungen " +
+                        "„Google Standortgenauigkeit“ (Verbesserte Standortgenauigkeit).",
+                    "Geofencing is currently unavailable. Turn on location and, in the location settings, " +
+                        "\"Google Location Accuracy\" (improved location accuracy).",
+                )
             GeofenceStatusCodes.GEOFENCE_TOO_MANY_GEOFENCES, GeofenceStatusCodes.GEOFENCE_TOO_MANY_PENDING_INTENTS ->
-                "Zu viele Geofences angemeldet. Starte das Handy neu und versuche es noch einmal."
+                tr("Zu viele Geofences angemeldet. Starte das Handy neu und versuche es noch einmal.", "Too many geofences registered. Restart the phone and try again.")
             GeofenceStatusCodes.GEOFENCE_INSUFFICIENT_LOCATION_PERMISSION ->
-                "Standort „Immer zulassen“ fehlt."
-            else -> "Anmeldung fehlgeschlagen (${code ?: e.javaClass.simpleName})."
+                tr("Standort „Immer zulassen“ fehlt.", "Location \"Allow all the time\" is missing.")
+            else -> tr("Anmeldung fehlgeschlagen (${code ?: e.javaClass.simpleName}).", "Registration failed (${code ?: e.javaClass.simpleName}).")
         }
     }
 
@@ -136,8 +142,8 @@ object Geofencer {
     fun notifyStartFailed(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, "Heimatbasis", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Hinweise, wenn du die Heimatbasis verlässt"
+            NotificationChannel(CHANNEL_ID, tr("Heimatbasis", "Home base"), NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = tr("Hinweise, wenn du die Heimatbasis verlässt", "Notices when you leave the home base")
             },
         )
         val open = PendingIntent.getActivity(
@@ -149,8 +155,8 @@ object Geofencer {
         )
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_scan)
-            .setContentTitle("Heimatbasis verlassen")
-            .setContentText("Android hat den automatischen Start blockiert. Tippen, um aufzuzeichnen.")
+            .setContentTitle(tr("Heimatbasis verlassen", "Left home base"))
+            .setContentText(tr("Android hat den automatischen Start blockiert. Tippen, um aufzuzeichnen.", "Android blocked the automatic start. Tap to record."))
             .setAutoCancel(true)
             .setContentIntent(open)
             .build()
@@ -166,6 +172,7 @@ class GeofenceReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val event = GeofencingEvent.fromIntent(intent) ?: return
         if (event.hasError()) return
+        Lang.init(context)
         HomeStore.init(context)
         val home = HomeStore.current
         if (!home.enabled) return

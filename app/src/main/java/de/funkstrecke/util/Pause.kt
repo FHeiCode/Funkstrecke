@@ -20,13 +20,14 @@ object PauseStore {
     const val UNTIL_RESUMED = Long.MAX_VALUE
 
     /** Angebotene Pausen in Minuten; null = bis zum Fortsetzen */
-    val choices: List<Pair<String, Int?>> = listOf(
-        "15 Minuten" to 15,
-        "30 Minuten" to 30,
-        "1 Stunde" to 60,
-        "2 Stunden" to 120,
-        "Bis ich fortsetze" to null,
-    )
+    val choices: List<Pair<String, Int?>>
+        get() = listOf(
+            tr("15 Minuten", "15 minutes") to 15,
+            tr("30 Minuten", "30 minutes") to 30,
+            tr("1 Stunde", "1 hour") to 60,
+            tr("2 Stunden", "2 hours") to 120,
+            tr("Bis ich fortsetze", "Until I resume") to null,
+        )
 
     private const val FILE = "pause"
     private var prefs: SharedPreferences? = null
@@ -84,7 +85,7 @@ object PauseStore {
 
     /** „bis 14:30“ oder „bis du fortsetzt“ */
     fun describe(until: Long): String =
-        if (until == UNTIL_RESUMED) "bis du fortsetzt" else "bis ${formatTime(until).substring(0, 5)}"
+        if (until == UNTIL_RESUMED) tr("bis du fortsetzt", "until you resume") else tr("bis ", "until ") + formatTime(until).substring(0, 5)
 }
 
 /** Beendet eine zeitlich begrenzte Pause. */

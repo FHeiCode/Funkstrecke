@@ -39,21 +39,26 @@ import de.funkstrecke.ui.StationDetailScreen
 import de.funkstrecke.ui.StationsScreen
 import de.funkstrecke.ui.theme.FunkTheme
 import de.funkstrecke.util.HomeStore
+import de.funkstrecke.util.Lang
 import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.SettingsStore
+import de.funkstrecke.util.tr
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector)
+private data class Tab(val route: String, private val de: String, private val en: String, val icon: ImageVector) {
+    val label: String get() = tr(de, en)
+}
 
 private val tabs = listOf(
-    Tab("live", "Live", Icons.Filled.SettingsInputAntenna),
-    Tab("stations", "Stationen", Icons.AutoMirrored.Filled.List),
-    Tab("map", "Karte", Icons.Filled.Map),
+    Tab("live", "Live", "Live", Icons.Filled.SettingsInputAntenna),
+    Tab("stations", "Stationen", "Stations", Icons.AutoMirrored.Filled.List),
+    Tab("map", "Karte", "Map", Icons.Filled.Map),
 )
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SettingsStore.init(this)
+        Lang.init(this)
         HomeStore.init(this)
         PauseStore.init(this)
         EndcMonitor.start(this)

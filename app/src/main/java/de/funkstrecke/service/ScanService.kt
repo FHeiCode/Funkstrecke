@@ -41,6 +41,7 @@ import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.formatDistance
+import de.funkstrecke.util.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -159,7 +160,7 @@ class ScanService : Service() {
         createChannel()
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
         try {
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification("Warte auf erste Position …"), type)
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(tr("Warte auf erste Position …", "Waiting for first position …")), type)
         } catch (e: Exception) {
             // Z. B. fehlt „Standort: Immer zulassen“ für einen Start aus dem Hintergrund.
             if (autoStarted) Geofencer.notifyStartFailed(this)
@@ -185,7 +186,7 @@ class ScanService : Service() {
                     setPhase(RecordPhase.PAUSED, System.currentTimeMillis())
                 } else {
                     if (_state.value.phase == RecordPhase.PAUSED) setPhase(RecordPhase.WAITING, System.currentTimeMillis())
-                    if (!tracking && !startLocationUpdates()) updateNotification("Standort ist ausgeschaltet")
+                    if (!tracking && !startLocationUpdates()) updateNotification(tr("Standort ist ausgeschaltet", "Location is turned off"))
                 }
                 refreshNotification()
             }
@@ -385,33 +386,33 @@ class ScanService : Service() {
         val minutes = s.phaseSince?.let { ((now - it) / 60_000).toInt() } ?: 0
         val acc = s.lastAccuracyM?.let { "±${formatDistance(it.toDouble())}" } ?: "?"
         val situation = when (s.phase) {
-            RecordPhase.WAITING -> "Warte auf erste Position"
-            RecordPhase.MOVING -> "In Bewegung · GPS $acc"
-            RecordPhase.STATIONARY -> "Stillstand${if (minutes > 0) " seit $minutes min" else ""} · Zellen jede Minute"
-            RecordPhase.COARSE -> "Ungenaues GPS${if (minutes > 0) " seit $minutes min" else ""} ($acc) · Zellen werden weiter erfasst"
-            RecordPhase.PAUSED -> "Pausiert ${PauseStore.describe(PauseStore.pausedUntil.value)} · GPS aus"
+            RecordPhase.WAITING -> tr("Warte auf erste Position", "Waiting for first position")
+            RecordPhase.MOVING -> tr("In Bewegung · GPS $acc", "Moving · GPS $acc")
+            RecordPhase.STATIONARY -> tr("Stillstand", "Stationary") + (if (minutes > 0) tr(" seit $minutes min", " for $minutes min") else "") + tr(" · Zellen jede Minute", " · cells every minute")
+            RecordPhase.COARSE -> tr("Ungenaues GPS", "Imprecise GPS") + (if (minutes > 0) tr(" seit $minutes min", " for $minutes min") else "") + tr(" ($acc) · Zellen werden weiter erfasst", " ($acc) · cells still recorded")
+            RecordPhase.PAUSED -> tr("Pausiert ${PauseStore.describe(PauseStore.pausedUntil.value)} · GPS aus", "Paused ${PauseStore.describe(PauseStore.pausedUntil.value)} · GPS off")
         }
         val reason = when (s.busy) {
-            Busy.CALL -> "Telefonat" to SettingsStore.callBehavior.value
-            Busy.DATA -> "Datenverkehr" to SettingsStore.dataBehavior.value
+            Busy.CALL -> tr("Telefonat", "Call") to SettingsStore.callBehavior.value
+            Busy.DATA -> tr("Datenverkehr", "Data traffic") to SettingsStore.dataBehavior.value
             Busy.NONE -> null
         }
         val call = if (reason == null) {
             ""
         } else {
             when (reason.second) {
-                CallBehavior.PAUSE -> "${reason.first}: Scans pausiert · "
-                CallBehavior.PASSIVE -> "${reason.first}: nur Mitlesen · "
+                CallBehavior.PAUSE -> tr("${reason.first}: Scans pausiert · ", "${reason.first}: scans paused · ")
+                CallBehavior.PASSIVE -> tr("${reason.first}: nur Mitlesen · ", "${reason.first}: listening only · ")
                 CallBehavior.NORMAL -> ""
             }
         }
-        updateNotification("$call$situation · ${s.scans} Scans · ${s.measurements} Messwerte · $cellCount Zellen")
+        updateNotification(tr("$call$situation · ${s.scans} Scans · ${s.measurements} Messwerte · $cellCount Zellen", "$call$situation · ${s.scans} scans · ${s.measurements} measurements · $cellCount cells"))
     }
 
     private fun createChannel() {
         val manager = getSystemService(NotificationManager::class.java) ?: return
-        val channel = NotificationChannel(CHANNEL_ID, "Aufzeichnung", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Hinweis, solange Funkstrecke Zellen mit GPS aufzeichnet"
+        val channel = NotificationChannel(CHANNEL_ID, tr("Aufzeichnung", "Recording"), NotificationManager.IMPORTANCE_LOW).apply {
+            description = tr("Hinweis, solange Funkstrecke Zellen mit GPS aufzeichnet", "Notice while Funkstrecke records cells with GPS")
         }
         manager.createNotificationChannel(channel)
     }
@@ -429,7 +430,7 @@ class ScanService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_scan)
-            .setContentTitle(if (autoStarted) "Heimatbasis verlassen: Aufzeichnung läuft" else "Funkstrecke zeichnet auf")
+            .setContentTitle(if (autoStarted) tr("Heimatbasis verlassen: Aufzeichnung läuft", "Left home base: recording") else tr("Funkstrecke zeichnet auf", "Funkstrecke is recording"))
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setOngoing(true)
@@ -437,12 +438,12 @@ class ScanService : Service() {
             .setContentIntent(open)
             .apply {
                 if (PauseStore.isPaused()) {
-                    addAction(0, "Fortsetzen", serviceAction(ACTION_RESUME, 2))
+                    addAction(0, tr("Fortsetzen", "Resume"), serviceAction(ACTION_RESUME, 2))
                 } else {
                     addAction(0, "Pause 30 min", serviceAction(ACTION_PAUSE, 3) { putExtra(EXTRA_MINUTES, 30) })
                 }
             }
-            .addAction(0, "Stopp", stop)
+            .addAction(0, tr("Stopp", "Stop"), stop)
             .build()
     }
 
