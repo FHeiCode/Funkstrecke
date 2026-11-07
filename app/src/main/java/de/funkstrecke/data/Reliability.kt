@@ -52,8 +52,8 @@ private fun m(v: Double) = formatDistance(v)
 /** Bewertung einer Zelle anhand der Schätzung ihrer Station und ihres OpenCelliD-Eintrags. */
 fun assessCell(station: BaseStation, cell: CellEntity): Assessment {
     val e = station.estimate
-    val o = station.ocidPlausible.firstOrNull { it.cellKey == cell.id }
-    val ocidDistance = if (e != null && o != null) distanceM(e.latitude, e.longitude, o.latitude!!, o.longitude!!) else null
+    // OpenCelliD zählt je Station: Schwerpunkt der plausiblen Zellen, nach Messungen gewichtet.
+    val ocidDistance = station.ocidDistanceM
     return when {
         e != null && e.radiusM < RELIABLE_RADIUS_M ->
             Assessment(Reliability.RELIABLE, tr("Standort auf ±${m(e.radiusM)} geschätzt", "location estimated to ±${m(e.radiusM)}"))
@@ -78,11 +78,25 @@ fun assessStation(station: BaseStation): Assessment =
 /** Unter diesem Abstand zur eigenen Schätzung wird keine Verbindungslinie zu OpenCelliD gezeichnet. */
 const val OCID_LINE_MIN_M = 30.0
 
-/** In OpenCelliD gefundene Zellen einer Station mit Position, je Zelle (für Verbindungslinien auf der Karte); auch unplausible. */
-fun ocidTargets(station: BaseStation): List<OcidEntity> {
-    val e = station.estimate ?: return emptyList()
-    return station.ocid.filter {
-        it.found && it.latitude != null && it.longitude != null &&
-            distanceM(e.latitude, e.longitude, it.latitude, it.longitude) >= OCID_LINE_MIN_M
+/** OpenCelliD-Schwerpunkt einer Station für die Karte. */
+data class OcidMarker(val latitude: Double, val longitude: Double, val plausible: Boolean, val cells: Int, val samples: Int)
+
+/**
+ * Ein Punkt je Station: der Schwerpunkt der plausiblen OpenCelliD-Zellen; gibt es keine,
+ * der der unplausiblen (grau dargestellt). Null ohne Schätzung oder Treffer.
+ */
+fun ocidMarker(station: BaseStation): OcidMarker? {
+    station.estimate ?: return null
+    station.ocidPosition?.let { (lat, lon) ->
+        return OcidMarker(lat, lon, true, station.ocidPlausible.size, station.ocidSamples)
     }
+    val bad = station.ocidImplausible
+    val (lat, lon) = station.ocidImplausiblePosition ?: return null
+    return OcidMarker(lat, lon, false, bad.size, bad.sumOf { it.samples ?: 0 })
+}
+
+/** Abstand Schätzung–Marker groß genug für eine Verbindungslinie */
+fun ocidLineWorthy(station: BaseStation, m: OcidMarker): Boolean {
+    val e = station.estimate ?: return false
+    return distanceM(e.latitude, e.longitude, m.latitude, m.longitude) >= OCID_LINE_MIN_M
 }

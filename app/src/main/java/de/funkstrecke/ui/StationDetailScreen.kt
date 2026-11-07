@@ -55,7 +55,8 @@ import de.funkstrecke.data.MeasurementEntity
 import de.funkstrecke.data.OsmMastEntity
 import de.funkstrecke.data.OsmMasts
 import de.funkstrecke.data.distanceM
-import de.funkstrecke.data.ocidTargets
+import de.funkstrecke.data.ocidLineWorthy
+import de.funkstrecke.data.ocidMarker
 import de.funkstrecke.data.pciGroup
 import de.funkstrecke.data.pciPss
 import de.funkstrecke.data.supportsPciGroups
@@ -286,7 +287,7 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
             MapDot(m.latitude, m.longitude, OsmMastColor, sizeDp = 15, title = "OpenStreetMap · ${m.description}", snippet = m.name, mast = true)
         }
     }
-    val dots = remember(measurements, e) {
+    val dots = remember(measurements, e, station.ocid) {
         // Ein Punkt je ~20-m-Raster, stärkster Pegel zählt.
         val spots = measurements
             .filter { it.dbm != null && (it.accuracyM ?: Float.MAX_VALUE) <= LocationEstimator.MAX_GPS_ERROR }
@@ -295,24 +296,23 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
         spots.map { m ->
             MapDot(m.latitude, m.longitude, signalColorRaw(signalLevel(station.rat, m.dbm)), sizeDp = 9)
         } + MapDot(e.latitude, e.longitude, color, sizeDp = 18, title = station.title, snippet = "±${formatDistance(e.radiusM)}") +
-            station.ocid.filter { it.found && it.latitude != null && it.longitude != null }.map { o ->
-                val cell = station.cells.firstOrNull { it.id == o.cellKey }
-                val bad = station.ocidImplausibleReason(o) != null
-                MapDot(
-                    o.latitude!!, o.longitude!!, if (bad) OcidImplausibleGrey else OcidColor, sizeDp = 13,
-                    title = "OpenCelliD · " + tr("Sektor", "sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}" +
-                        if (bad) tr(" · unplausibel", " · implausible") else "",
-                    snippet = listOfNotNull(o.samples?.let { tr("$it Messungen", "$it measurements") }, o.rangeM?.let { tr("Reichweite ${formatDistance(it.toDouble())}", "range ${formatDistance(it.toDouble())}") })
-                        .joinToString(" · "),
-                )
-            }
+            listOfNotNull(
+                ocidMarker(station)?.let { m ->
+                    MapDot(
+                        m.latitude, m.longitude, if (m.plausible) OcidColor else OcidImplausibleGrey, sizeDp = 13,
+                        title = tr("OpenCelliD-Schwerpunkt", "OpenCelliD centroid") + if (m.plausible) "" else tr(" · unplausibel", " · implausible"),
+                        snippet = tr("${m.cells} Zellen, ${m.samples} Messungen", "${m.cells} cells, ${m.samples} measurements"),
+                    )
+                },
+            )
     }
     val circles = remember(e) { listOf(MapCircle(e.latitude, e.longitude, e.radiusM, color)) }
     val ocidLines = remember(station, e) {
-        ocidTargets(station).map { o ->
-            val bad = station.ocidImplausibleReason(o) != null
-            CoverageLine(e.latitude, e.longitude, o.latitude!!, o.longitude!!, (if (bad) OcidImplausibleGrey else OcidColor).toArgb(), 1.5f, dashed = true)
-        }
+        listOfNotNull(
+            ocidMarker(station)?.takeIf { ocidLineWorthy(station, it) }?.let { m ->
+                CoverageLine(e.latitude, e.longitude, m.latitude, m.longitude, (if (m.plausible) OcidColor else OcidImplausibleGrey).toArgb(), 1.5f, dashed = true)
+            },
+        )
     }
     OsmMap(
         dots = mastDots + dots,
@@ -326,7 +326,7 @@ private fun EstimateMap(station: BaseStation, measurements: List<MeasurementEnti
     )
     Text(
         tr("Punkte: deine Messorte, grün = starker, rot = schwacher Pegel. Großer Punkt und Kreis: geschätzter Mast.", "Dots: your measurement spots, green = strong, red = weak signal. Large dot and circle: estimated mast.") +
-            if (ocidLines.isNotEmpty()) tr(" Lila, gestrichelt: OpenCelliD-Position je Zelle (grau = unplausibel).", " Purple, dashed: OpenCelliD position per cell (grey = implausible).") else "",
+            if (ocidLines.isNotEmpty()) tr(" Lila, gestrichelt: OpenCelliD-Schwerpunkt der Station (grau = unplausibel).", " Purple, dashed: OpenCelliD centroid of the station (grey = implausible).") else "",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -635,7 +635,7 @@ private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
                             "This station's OpenCelliD matches are implausible (too far from your estimate) and are not used.",
                         )
                         station.ocidUnknown -> tr("Keine Zelle dieser Station ist in OpenCelliD verzeichnet. Sie ist neu oder wurde dort noch nicht erfasst.", "No cell of this station is listed in OpenCelliD. It is new or has not been recorded there yet.")
-                        distance != null -> tr("Die OpenCelliD-Position liegt ${formatDistance(distance)} von deiner Schätzung entfernt.", "The OpenCelliD position is ${formatDistance(distance)} from your estimate.")
+                        distance != null -> tr("Der OpenCelliD-Schwerpunkt (${station.ocidPlausible.size} Zellen, ${station.ocidSamples} Messungen, nach Messungen gewichtet) liegt ${formatDistance(distance)} von deiner Schätzung entfernt.", "The OpenCelliD centroid (${station.ocidPlausible.size} cells, ${station.ocidSamples} measurements, weighted by measurements) is ${formatDistance(distance)} from your estimate.")
                         else -> tr("In OpenCelliD verzeichnet. Für einen Vergleich fehlt noch deine Standortschätzung.", "Listed in OpenCelliD. Your location estimate is still missing for a comparison.")
                     },
                     style = MaterialTheme.typography.bodyMedium,

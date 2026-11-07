@@ -121,13 +121,27 @@ data class BaseStation(
     val ocidImplausible: List<OcidEntity>
         get() = ocid.filter { it.found && it.latitude != null && it.longitude != null && ocidImplausibleReason(it) != null }
 
-    /** Mittel der OpenCelliD-Positionen aller plausiblen Treffer */
-    val ocidPosition: Pair<Double, Double>?
-        get() {
-            val f = ocidPlausible
-            if (f.isEmpty()) return null
-            return f.map { it.latitude!! }.average() to f.map { it.longitude!! }.average()
-        }
+    /**
+     * OpenCelliD-Schwerpunkt der Station: Mittel der plausiblen Zellpositionen, gewichtet nach der
+     * Zahl der OpenCelliD-Messungen je Zelle. Wird überall statt der einzelnen Zellen verwendet
+     * (Karte, Abweichungs-Statistik, Bewertung).
+     */
+    val ocidPosition: Pair<Double, Double>? get() = weightedCentroid(ocidPlausible)
+
+    /** Schwerpunkt der unplausiblen Treffer (nur zur Anzeige, wenn es keine plausiblen gibt) */
+    val ocidImplausiblePosition: Pair<Double, Double>? get() = weightedCentroid(ocidImplausible)
+
+    /** Zahl der OpenCelliD-Messungen hinter [ocidPosition] */
+    val ocidSamples: Int get() = ocidPlausible.sumOf { it.samples ?: 0 }
+
+    private fun weightedCentroid(list: List<OcidEntity>): Pair<Double, Double>? {
+        if (list.isEmpty()) return null
+        val w = list.map { (it.samples ?: 1).coerceAtLeast(1).toDouble() }
+        val total = w.sum()
+        val lat = list.indices.sumOf { list[it].latitude!! * w[it] } / total
+        val lon = list.indices.sumOf { list[it].longitude!! * w[it] } / total
+        return lat to lon
+    }
 
     /** Alle abgeglichenen Zellen fehlen in OpenCelliD */
     val ocidUnknown: Boolean get() = ocid.isNotEmpty() && ocid.none { it.found } && ocid.all { it.status == OcidEntity.STATUS_NOT_FOUND }

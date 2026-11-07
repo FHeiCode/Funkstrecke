@@ -88,8 +88,8 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
         }
     }
     val deviations = remember(filtered) { ocidDeviations(filtered) }
-    val ocidImplausible = remember(filtered) { filtered.sumOf { it.ocidImplausible.size } }
-    val ocidNotFound = remember(filtered) { filtered.sumOf { s -> s.ocid.count { it.status == de.funkstrecke.data.OcidEntity.STATUS_NOT_FOUND } } }
+    val ocidImplausible = remember(filtered) { filtered.count { it.ocidPosition == null && it.ocidImplausible.isNotEmpty() } }
+    val ocidNotFound = remember(filtered) { filtered.count { it.ocidUnknown } }
     var ocidBin by rememberSaveable { mutableStateOf<Int?>(null) }
     var reliabilityFilter by rememberSaveable { mutableStateOf<Reliability?>(null) }
     val reliabilityCounts = remember(filtered) { filtered.groupingBy { it.assessment.reliability }.eachCount() }

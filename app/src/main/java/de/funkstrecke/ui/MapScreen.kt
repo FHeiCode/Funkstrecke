@@ -51,7 +51,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.funkstrecke.data.CoverageCell
 import de.funkstrecke.data.Reliability
 import de.funkstrecke.data.coverageFor
-import de.funkstrecke.data.ocidTargets
+import de.funkstrecke.data.ocidLineWorthy
+import de.funkstrecke.data.ocidMarker
 import de.funkstrecke.ui.theme.operatorColorRaw
 import de.funkstrecke.ui.theme.signalColorRaw
 import de.funkstrecke.util.HomeStore
@@ -274,28 +275,25 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
         }
     }
 
-    // OpenCelliD: gestrichelte Linie von der eigenen Schätzung zu jeder dort verzeichneten Zelle.
+    // OpenCelliD: ein Punkt je Station (Schwerpunkt der Zellen, nach Messungen gewichtet), verbunden mit der Schätzung.
     val ocidPairs = remember(visible, showOcid) {
-        if (!showOcid) emptyList() else visible.flatMap { (s, _) -> ocidTargets(s).map { s to it } }
+        if (!showOcid) emptyList() else visible.mapNotNull { (s, _) -> ocidMarker(s)?.let { s to it } }
     }
     val ocidLines = remember(ocidPairs) {
-        ocidPairs.map { (s, o) ->
+        ocidPairs.filter { (s, m) -> ocidLineWorthy(s, m) }.map { (s, m) ->
             val e = s.estimate!!
-            val bad = s.ocidImplausibleReason(o) != null
-            CoverageLine(e.latitude, e.longitude, o.latitude!!, o.longitude!!, (if (bad) OcidImplausibleGrey else OcidPurple).toArgb(), 1.5f, dashed = true)
+            CoverageLine(e.latitude, e.longitude, m.latitude, m.longitude, (if (m.plausible) OcidPurple else OcidImplausibleGrey).toArgb(), 1.5f, dashed = true)
         }
     }
     val ocidDots = remember(ocidPairs) {
-        ocidPairs.map { (s, o) ->
-            val cell = s.cells.firstOrNull { it.id == o.cellKey }
-            val bad = s.ocidImplausibleReason(o)
+        ocidPairs.map { (s, m) ->
             MapDot(
-                latitude = o.latitude!!,
-                longitude = o.longitude!!,
-                color = if (bad != null) OcidImplausibleGrey else OcidPurple,
+                latitude = m.latitude,
+                longitude = m.longitude,
+                color = if (m.plausible) OcidPurple else OcidImplausibleGrey,
                 sizeDp = 10,
-                title = "OpenCelliD · ${s.title}" + if (bad != null) tr(" · unplausibel", " · implausible") else "",
-                snippet = tr("Sektor", "Sector") + " ${cell?.sector ?: cell?.cellId ?: "?"}" + (bad?.let { " · $it" } ?: ""),
+                title = "OpenCelliD · ${s.title}" + if (m.plausible) "" else tr(" · unplausibel", " · implausible"),
+                snippet = tr("Schwerpunkt aus ${m.cells} Zellen, ${m.samples} Messungen", "centroid of ${m.cells} cells, ${m.samples} measurements"),
                 onClick = { onOpen(s.key) },
                 hollow = true,
             )
