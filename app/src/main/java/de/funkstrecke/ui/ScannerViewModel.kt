@@ -19,6 +19,9 @@ import de.funkstrecke.data.buildTrackingAreas
 import de.funkstrecke.data.MeasurementEntity
 import de.funkstrecke.data.Recorder
 import de.funkstrecke.data.buildStations
+import de.funkstrecke.data.distanceM
+import de.funkstrecke.locate.LocationEstimator
+import de.funkstrecke.locate.Terrain
 import de.funkstrecke.radio.CellScanner
 import de.funkstrecke.radio.EndcMonitor
 import de.funkstrecke.radio.LiveScan
@@ -28,7 +31,9 @@ import de.funkstrecke.util.CsvExport
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.tr
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -64,6 +69,77 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 Recorder.recomputeAll(db)
                 prefs.edit().putBoolean(RECOMPUTE_TA_FIX, true).apply()
             }
+        }
+        // Gelände: einmalig alle Schätzungen neu rechnen (fordert dabei die Kacheln an) …
+        if (!prefs.getBoolean(RECOMPUTE_TERRAIN, false)) {
+            viewModelScope.launch {
+                Recorder.recomputeAll(db)
+                prefs.edit().putBoolean(RECOMPUTE_TERRAIN, true).apply()
+            }
+        }
+        // … und jedes Mal, wenn neue Kacheln angekommen sind (gesammelt, höchstens alle paar Sekunden).
+        viewModelScope.launch {
+            Terrain.ready.collectLatest {
+                delay(5_000)
+                Recorder.recomputeAll(db)
+            }
+        }
+    }
+
+    /** Geländemodell ein- oder ausschalten; alle Schätzungen werden neu berechnet. */
+    fun setTerrainEnabled(value: Boolean) {
+        Terrain.setEnabled(value)
+        viewModelScope.launch { Recorder.recomputeAll(db) }
+    }
+
+    fun clearTerrain() {
+        Terrain.clear()
+        viewModelScope.launch { Recorder.recomputeAll(db) }
+    }
+
+    /** Ergebnis des Vergleichs mit und ohne Gelände an Stationen mit OSM-Mast in der Nähe. */
+    data class TerrainEffect(
+        val running: Boolean,
+        val stations: Int = 0,
+        val medianWithoutM: Double? = null,
+        val medianWithM: Double? = null,
+        val improved: Int = 0,
+        val worse: Int = 0,
+    )
+
+    private val _terrainEffect = MutableStateFlow<TerrainEffect?>(null)
+    val terrainEffect: StateFlow<TerrainEffect?> = _terrainEffect.asStateFlow()
+
+    /**
+     * Wirkung des Geländemodells messen: Für jede Station mit einem OSM-Mast höchstens 500 m neben der
+     * Schätzung wird ohne und mit Gelände gerechnet und jeweils der Abstand zu diesem Mast bestimmt.
+     */
+    fun measureTerrainEffect() {
+        if (_terrainEffect.value?.running == true) return
+        _terrainEffect.value = TerrainEffect(running = true)
+        viewModelScope.launch {
+            val pairs = withContext(Dispatchers.Default) {
+                stations.value.filter { !it.inferred && it.estimate != null }.mapNotNull { s ->
+                    val measurements = dao.measurementsForGroup(s.key, Recorder.ESTIMATE_MAX_MEASUREMENTS)
+                    val without = LocationEstimator.estimate(s.rat, measurements) ?: return@mapNotNull null
+                    val mast = s.osmMast?.takeIf {
+                        distanceM(without.latitude, without.longitude, it.latitude, it.longitude) <= 500.0
+                    } ?: return@mapNotNull null
+                    val with = LocationEstimator.estimate(s.rat, measurements, Terrain::elevation) ?: return@mapNotNull null
+                    if (!with.method.contains("Gelände")) return@mapNotNull null
+                    distanceM(without.latitude, without.longitude, mast.latitude, mast.longitude) to
+                        distanceM(with.latitude, with.longitude, mast.latitude, mast.longitude)
+                }
+            }
+            fun median(v: List<Double>) = v.sorted().let { if (it.isEmpty()) null else if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
+            _terrainEffect.value = TerrainEffect(
+                running = false,
+                stations = pairs.size,
+                medianWithoutM = median(pairs.map { it.first }),
+                medianWithM = median(pairs.map { it.second }),
+                improved = pairs.count { it.second < it.first - 10 },
+                worse = pairs.count { it.second > it.first + 10 },
+            )
         }
     }
 
@@ -250,5 +326,6 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
 
     private companion object {
         const val RECOMPUTE_TA_FIX = "recomputed_after_ta_fix"
+        const val RECOMPUTE_TERRAIN = "recomputed_with_terrain"
     }
 }

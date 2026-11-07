@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         composable("live") { LiveScreen(vm, onSettings = { nav.navigate("settings") }) }
                         composable("settings") {
-                            SettingsScreen(onBack = { nav.popBackStack() }, onHomeBase = { nav.navigate("home") })
+                            SettingsScreen(vm, onBack = { nav.popBackStack() }, onHomeBase = { nav.navigate("home") })
                         }
                         composable("home") { HomeBaseScreen(onBack = { nav.popBackStack() }) }
                         composable("stations") { StationsScreen(vm, onOpen = ::openStation) }

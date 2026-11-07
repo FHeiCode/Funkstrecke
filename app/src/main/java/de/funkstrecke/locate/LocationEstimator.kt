@@ -24,6 +24,12 @@ import kotlin.math.sqrt
  * Gelöst wird mit Levenberg-Marquardt von mehreren Startpunkten aus. Passen zwei
  * Lösungen etwa gleich gut (typisch: alle Messungen auf einer Straße → Spiegelung),
  * deckt der Radius beide ab. Mit jeder neuen Blickrichtung schrumpft er.
+ *
+ * Mit Geländemodell ([elevation]) wird danach für jede Messung geprüft, ob zwischen dem geschätzten
+ * Mast (Antenne [ANTENNA_HEIGHT_M] über Grund) und dem Messort ein Hügel liegt. Abgeschattete
+ * Messungen sind viel leiser, als das Modell erwartet; sie bekommen eine große Unsicherheit und
+ * ziehen die Schätzung nicht mehr nach außen. Das wird zweimal wiederholt, weil sich mit dem Mast
+ * auch die Abschattung verschiebt.
  */
 object LocationEstimator {
 
@@ -60,6 +66,19 @@ object LocationEstimator {
     /** Lösungen innerhalb dieses χ²-Abstands gelten als gleich gut (≈ 2 σ) */
     private const val AMBIGUITY_CHI2 = 4.0
 
+    /** Angenommene Antennenhöhe über Grund */
+    const val ANTENNA_HEIGHT_M = 30.0
+    /** Höhe des Handys über Grund */
+    private const val HANDSET_HEIGHT_M = 1.5
+    /** Gelände muss die Sichtlinie um so viel überragen (90-m-Raster, Wald und Gebäude grob enthalten) */
+    private const val CLEARANCE_M = 10.0
+    /** Zusätzliche Pegelunsicherheit für abgeschattete Messungen */
+    private const val SHADOW_SIGMA_DB = 15.0
+    /** Abstand der Stützpunkte im Geländeprofil */
+    private const val PROFILE_STEP_M = 45.0
+    /** Wirksamer Erdradius (k = 4/3) für die Erdkrümmung */
+    private const val EFFECTIVE_EARTH_RADIUS_M = 6_371_000.0 * 4 / 3
+
     private class Obs(
         val x: Double,
         val y: Double,
@@ -68,11 +87,18 @@ object LocationEstimator {
         val taDistance: Double?,
         /** Mittlere GPS-Ungenauigkeit der Messpunkte in diesem Rasterfeld */
         val accuracy: Double,
-    )
+    ) {
+        /** Zusätzliche Pegelunsicherheit (Abschattung durch Gelände) */
+        var extraSigmaDb: Double = 0.0
+    }
 
     private class Solution(val x: Double, val y: Double, val cost: Double, val radius: Double)
 
-    fun estimate(rat: String, measurements: List<MeasurementEntity>): Result? {
+    /**
+     * @param elevation Geländehöhe in m für eine Position, null wenn unbekannt; ohne Funktion oder
+     *   bei fehlenden Höhen wird ohne Gelände gerechnet.
+     */
+    fun estimate(rat: String, measurements: List<MeasurementEntity>, elevation: ((Double, Double) -> Double?)? = null): Result? {
         val usable = measurements.filter { it.dbm != null && (it.accuracyM ?: Float.MAX_VALUE) <= MAX_GPS_ERROR }
         if (usable.isEmpty()) return null
 
@@ -142,14 +168,40 @@ object LocationEstimator {
             cx - px * offset to cy - py * offset,
             (mx + 2 * along * ax - vx) to (my + 2 * along * ay - vy),
         )
-        val solutions = starts.mapNotNull { (sx, sy) -> problem.solve(sx, sy) }
+        fun solveAll() = starts.mapNotNull { (sx, sy) -> problem.solve(sx, sy) }
             .filter { it.x.isFinite() && it.y.isFinite() && hypot(it.x - cx, it.y - cy) < 3 * spread + 2_000 }
-        val best = solutions.minByOrNull { it.cost } ?: return fallback
+        var solutions = solveAll()
+        var best = solutions.minByOrNull { it.cost } ?: return fallback
+
+        // Gelände: abgeschattete Messungen abwerten und neu lösen.
+        var terrainNote = ""
+        if (elevation != null) {
+            fun h(x: Double, y: Double) = elevation(lat0 + y / ky, lon0 + x / kx)
+            val obsGround = obs.map { h(it.x, it.y) }
+            if (obsGround.all { it != null }) {
+                var shadowed = 0
+                repeat(2) {
+                    val mastGround = h(best.x, best.y) ?: return@repeat
+                    shadowed = 0
+                    obs.forEachIndexed { i, o ->
+                        val blocked = blocked(best.x, best.y, mastGround + ANTENNA_HEIGHT_M, o.x, o.y, obsGround[i]!! + HANDSET_HEIGHT_M, ::h)
+                        o.extraSigmaDb = if (blocked) SHADOW_SIGMA_DB else 0.0
+                        if (blocked) shadowed++
+                    }
+                    val again = solveAll()
+                    again.minByOrNull { it.cost }?.let {
+                        solutions = again
+                        best = it
+                    }
+                }
+                terrainNote = ", Gelände: $shadowed/${obs.size} abgeschattet"
+            }
+        }
 
         val similar = solutions.filter { it.cost <= best.cost + AMBIGUITY_CHI2 }
         val farthest = similar.maxOf { hypot(it.x - best.x, it.y - best.y) }
         val usesTa = obs.any { it.taDistance != null }
-        val method = if (usesTa) "Multilateration (Pegel + TA)" else "Multilateration (Pegel)"
+        val method = (if (usesTa) "Multilateration (Pegel + TA)" else "Multilateration (Pegel)") + terrainNote
 
         if (farthest <= best.radius) {
             if (best.radius > 20_000) return fallback
@@ -162,6 +214,33 @@ object LocationEstimator {
         val y = (minY + maxY) / 2
         val radius = similar.maxOf { hypot(it.x - x, it.y - y) + it.radius }
         return result(x, y, min(radius, 20_000.0), "$method, mehrdeutig – aus anderer Richtung messen")
+    }
+
+    /**
+     * Liegt Gelände zwischen Mast und Messort über der Sichtlinie (plus [CLEARANCE_M])?
+     * Erdkrümmung mit wirksamem Erdradius; die Enden des Profils bleiben unberücksichtigt.
+     */
+    private fun blocked(
+        mx: Double,
+        my: Double,
+        mastZ: Double,
+        ox: Double,
+        oy: Double,
+        obsZ: Double,
+        h: (Double, Double) -> Double?,
+    ): Boolean {
+        val d = hypot(ox - mx, oy - my)
+        if (d < 3 * PROFILE_STEP_M) return false
+        val steps = (d / PROFILE_STEP_M).toInt().coerceAtMost(400)
+        for (k in 2..steps - 2) {
+            val t = k.toDouble() / steps
+            val ground = h(mx + (ox - mx) * t, my + (oy - my) * t) ?: continue
+            val d1 = d * t
+            val bulge = d1 * (d - d1) / (2 * EFFECTIVE_EARTH_RADIUS_M)
+            val line = mastZ + (obsZ - mastZ) * t
+            if (ground + bulge > line + CLEARANCE_M) return true
+        }
+        return false
     }
 
     /** Nichtlineares Ausgleichsproblem: Parameter x, y, P0 je Zelle. */
@@ -180,7 +259,7 @@ object LocationEstimator {
                 val predicted = q[2 + o.cell] - 10 * PATH_LOSS_EXPONENT * log10(d)
                 // Positionsfehler als zusätzlicher Pegelfehler: nah am Mast groß, weit weg klein.
                 val positionDb = DB_PER_RELATIVE_DISTANCE * o.accuracy / d
-                val sigma = sqrt(SIGMA_DB * SIGMA_DB + positionDb * positionDb)
+                val sigma = sqrt(SIGMA_DB * SIGMA_DB + positionDb * positionDb + o.extraSigmaDb * o.extraSigmaDb)
                 r[i] = (o.rss - predicted) / sigma
                 if (jac != null) {
                     jac[i].fill(0.0)
@@ -329,4 +408,5 @@ fun localizeMethod(method: String): String =
             .replace("(Pegel + TA)", "(signal + TA)")
             .replace("(Pegel)", "(signal)")
             .replace("mehrdeutig – aus anderer Richtung messen", "ambiguous – measure from another direction")
+            .replace(Regex("Gelände: (\\d+)/(\\d+) abgeschattet"), "terrain: $1/$2 shadowed")
     }

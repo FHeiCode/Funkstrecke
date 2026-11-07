@@ -3,6 +3,7 @@ package de.funkstrecke.data
 import android.location.Location
 import androidx.room.withTransaction
 import de.funkstrecke.locate.LocationEstimator
+import de.funkstrecke.locate.Terrain
 import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.radio.EndcMode
 import de.funkstrecke.radio.EndcSnapshot
@@ -19,7 +20,7 @@ object Recorder {
 
     /** Neuberechnung einer Station höchstens alle 15 s, damit lange Fahrten flüssig bleiben. */
     private const val ESTIMATE_INTERVAL_MS = 15_000L
-    private const val ESTIMATE_MAX_MEASUREMENTS = 4_000
+    const val ESTIMATE_MAX_MEASUREMENTS = 4_000
     private val lastEstimate = ConcurrentHashMap<String, Long>()
 
     private fun <T : Comparable<T>> maxOfNullable(a: T?, b: T?): T? = when {
@@ -150,7 +151,10 @@ object Recorder {
     suspend fun updateEstimate(db: AppDatabase, groupKey: String, rat: String, now: Long = System.currentTimeMillis()) {
         val dao = db.cellDao()
         val measurements = dao.measurementsForGroup(groupKey, ESTIMATE_MAX_MEASUREMENTS)
-        val result = withContext(Dispatchers.Default) { LocationEstimator.estimate(rat, measurements) }
+        // Geländekacheln für die Messorte anfordern (lädt im Hintergrund; bis dahin ohne Gelände).
+        Terrain.request(measurements.map { it.latitude to it.longitude }.distinctBy { (la, lo) -> (la * 20).toInt() to (lo * 20).toInt() })
+        val elevation: ((Double, Double) -> Double?)? = if (Terrain.enabled) Terrain::elevation else null
+        val result = withContext(Dispatchers.Default) { LocationEstimator.estimate(rat, measurements, elevation) }
         if (result == null) {
             dao.deleteEstimate(groupKey)
             return

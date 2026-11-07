@@ -21,12 +21,14 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +41,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.funkstrecke.locate.Terrain
 import de.funkstrecke.service.Geofencer
 import de.funkstrecke.service.HomeStatus
 import de.funkstrecke.util.AppLanguage
@@ -52,7 +55,7 @@ import de.funkstrecke.util.tr
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
+fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> Unit) {
     val settings by SettingsStore.flow.collectAsStateWithLifecycle()
     val home by HomeStore.flow.collectAsStateWithLifecycle()
     val homeStatus by Geofencer.status.collectAsStateWithLifecycle()
@@ -195,6 +198,10 @@ fun SettingsScreen(onBack: () -> Unit, onHomeBase: () -> Unit) {
                 BehaviorChoices(dataBehavior, { it.dataDescription }, SettingsStore::setDataBehavior)
             }
 
+            Section(tr("Geländemodell", "Terrain model")) {
+                TerrainSettings(vm)
+            }
+
             Section(tr("Messung", "Measurement")) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -286,6 +293,86 @@ private fun BehaviorChoices(
                     Text(b.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     Text(description(b), style = MaterialTheme.typography.bodySmall)
                 }
+            }
+        }
+    }
+}
+
+/** Einstellungen und Prüfung des Geländemodells (Copernicus GLO-90). */
+@Composable
+private fun TerrainSettings(vm: ScannerViewModel) {
+    val status by Terrain.status.collectAsStateWithLifecycle()
+    val effect by vm.terrainEffect.collectAsStateWithLifecycle()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Hügel und Täler berücksichtigen", "Account for hills and valleys"), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    tr(
+                        "Messungen, bei denen ein Hügel zwischen Mast und Messort liegt, zählen bei der Standortschätzung weniger. " +
+                            "Höhendaten: Copernicus GLO-90 (90-m-Raster), einmal je 1° × 1°-Gebiet (etwa 110 × 75 km) geladen, 3–4 MB.",
+                        "Measurements with a hill between mast and measuring point count less in the location estimate. " +
+                            "Elevation data: Copernicus GLO-90 (90 m grid), loaded once per 1° × 1° area (about 110 × 75 km), 3–4 MB.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Switch(checked = status.enabled, onCheckedChange = { vm.setTerrainEnabled(it) })
+        }
+        if (status.enabled) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Nur über WLAN laden", "Download over Wi-Fi only"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(checked = status.wifiOnly, onCheckedChange = { Terrain.setWifiOnly(it) })
+            }
+        }
+        Text(
+            buildString {
+                append(
+                    tr(
+                        "${status.tiles} Gebiete gespeichert (${"%.1f".format(Lang.locale, status.bytes / 1_048_576.0)} MB)",
+                        "${status.tiles} areas stored (${"%.1f".format(Lang.locale, status.bytes / 1_048_576.0)} MB)",
+                    ),
+                )
+                if (status.loading > 0) append(tr(" · lade ${status.loading} …", " · loading ${status.loading} …"))
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            tr(
+                "Wirkung prüfen: An Stationen mit einem OSM-Mast höchstens 500 m neben der Schätzung wird mit und ohne Gelände gerechnet " +
+                    "und der Abstand zum Mast verglichen.",
+                "Check effect: at stations with an OSM mast within 500 m of the estimate, the location is computed with and without terrain " +
+                    "and the distance to the mast compared.",
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        effect?.let { e ->
+            Text(
+                when {
+                    e.running -> tr("Rechne …", "Computing …")
+                    e.stations == 0 -> tr(
+                        "Keine passende Station: Es braucht Stationen mit OSM-Mast in der Nähe und geladenen Geländedaten.",
+                        "No suitable station: stations with a nearby OSM mast and loaded terrain data are needed.",
+                    )
+                    else -> tr(
+                        "${e.stations} Stationen · Median-Abstand zum OSM-Mast ohne Gelände ${formatDistance(e.medianWithoutM!!)}, " +
+                            "mit Gelände ${formatDistance(e.medianWithM!!)} · ${e.improved} näher, ${e.worse} weiter weg",
+                        "${e.stations} stations · median distance to OSM mast without terrain ${formatDistance(e.medianWithoutM!!)}, " +
+                            "with terrain ${formatDistance(e.medianWithM!!)} · ${e.improved} closer, ${e.worse} farther",
+                    )
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { vm.measureTerrainEffect() }, enabled = status.enabled && effect?.running != true) {
+                Text(tr("Wirkung prüfen", "Check effect"))
+            }
+            if (status.tiles > 0) {
+                TextButton(onClick = { vm.clearTerrain() }) { Text(tr("Daten löschen", "Delete data")) }
             }
         }
     }

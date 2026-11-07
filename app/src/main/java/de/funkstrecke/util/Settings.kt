@@ -87,6 +87,7 @@ object SettingsStore {
     fun init(context: Context) {
         if (prefs != null) return
         Lang.init(context)
+        de.funkstrecke.locate.Terrain.init(context)
         val p = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
         prefs = p
         val defaults = ScanPreset.BALANCED.settings
