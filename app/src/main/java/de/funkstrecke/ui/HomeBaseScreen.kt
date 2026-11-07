@@ -72,8 +72,7 @@ import de.funkstrecke.util.formatDistance
 import de.funkstrecke.util.tr
 import kotlinx.coroutines.launch
 
-/** Farbe der Heimatbasis auf allen Karten */
-// Magenta: hebt sich von Betreiber-, Signal- und Bewertungsfarben ab.
+/** Farbe der Heimatbasis auf allen Karten: Magenta, hebt sich von Betreiber-, Signal- und Bewertungsfarben ab. */
 val HomeBaseColor = Color(0xFFD0108A)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
