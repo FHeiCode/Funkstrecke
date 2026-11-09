@@ -26,6 +26,16 @@ object LocationHelper {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
 
+    /** Letzte bekannte Position ohne neue Ortung (kostet keinen Strom). */
+    @SuppressLint("MissingPermission")
+    fun lastKnown(context: Context): Location? {
+        if (!hasPermission(context)) return null
+        val lm = context.getSystemService(LocationManager::class.java) ?: return null
+        return listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+            .mapNotNull { runCatching { lm.getLastKnownLocation(it) }.getOrNull() }
+            .maxByOrNull { it.time }
+    }
+
     /** Aktuelle Position (höchstens 20 s warten), sonst die letzte bekannte. */
     @SuppressLint("MissingPermission")
     suspend fun currentLocation(context: Context): Location? {

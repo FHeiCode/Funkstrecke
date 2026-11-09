@@ -163,7 +163,14 @@ private class CoverageOverlay : Overlay() {
 }
 
 /** Ein Unsicherheitskreis (Standortschätzung). */
-data class MapCircle(val latitude: Double, val longitude: Double, val radiusM: Double, val color: Color)
+data class MapCircle(
+    val latitude: Double,
+    val longitude: Double,
+    val radiusM: Double,
+    val color: Color,
+    /** Gestrichelter Rand ohne Füllung (z. B. nur geschätzter Abstand) */
+    val dashed: Boolean = false,
+)
 
 /** Roter Punkt mit weißem Rand für die eigene Position. */
 private fun positionBitmap(context: Context): Bitmap {
@@ -449,9 +456,10 @@ fun OsmMap(
             circles.forEach { c ->
                 added += Polygon(map).apply {
                     points = Polygon.pointsAsCircle(GeoPoint(c.latitude, c.longitude), c.radiusM)
-                    fillPaint.color = c.color.copy(alpha = 0.12f).toArgb()
-                    outlinePaint.color = c.color.copy(alpha = 0.7f).toArgb()
-                    outlinePaint.strokeWidth = 3f
+                    fillPaint.color = if (c.dashed) android.graphics.Color.TRANSPARENT else c.color.copy(alpha = 0.12f).toArgb()
+                    outlinePaint.color = c.color.copy(alpha = if (c.dashed) 0.9f else 0.7f).toArgb()
+                    outlinePaint.strokeWidth = if (c.dashed) 4f else 3f
+                    if (c.dashed) outlinePaint.pathEffect = DashPathEffect(floatArrayOf(14f, 10f), 0f)
                     setOnClickListener { _, _, _ -> false }
                 }
             }

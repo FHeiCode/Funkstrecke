@@ -59,6 +59,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import de.funkstrecke.data.CoverageCell
 import de.funkstrecke.data.Reliability
+import de.funkstrecke.data.NeighbourEstimate
 import de.funkstrecke.data.matchLiveCells
 import de.funkstrecke.data.coverageFor
 import de.funkstrecke.data.ocidLineWorthy
@@ -328,6 +329,67 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
         }.sortedByDescending { it.sizeDp } // Nachbarn zuletzt: am selben Standort liegen sie sonst unter dem grünen Punkt
     }
 
+    // Gemessene Nachbarzellen ohne verortete Station: Schätzung aus früheren Messungen in der Nähe,
+    // sonst nur der Abstand aus dem Pegel (gestrichelter Ring um die eigene Position).
+    val unmatchedNeighbours = remember(liveCells, liveResult) {
+        val matched = liveResult.byStation.values.flatMap { m -> listOf(m.cell.key) + m.neighbourCells.map { it.key } }.toSet()
+        val servingKeys = liveCells.filter { it.registered }.map { it.key }.toSet()
+        liveCells.filter { !it.registered && it.key !in matched && it.key !in servingKeys }.distinctBy { it.key }
+    }
+    LaunchedEffect(unmatchedNeighbours) { vm.updateNeighbourEstimates(unmatchedNeighbours) }
+    val neighbourEstimates by vm.neighbourEstimates.collectAsStateWithLifecycle()
+    val shownEstimates = remember(neighbourEstimates, unmatchedNeighbours) {
+        val keys = unmatchedNeighbours.map { it.key }.toSet()
+        neighbourEstimates.values.filter { it.cell.key in keys }
+    }
+    fun neighbourLabel(c: de.funkstrecke.radio.CellRecord) = listOfNotNull(
+        c.band?.label,
+        c.pci?.let { "PCI $it" },
+        c.dbm?.let { "$it dBm" },
+    ).joinToString(" · ")
+    val estimateCircles = remember(shownEstimates) {
+        shownEstimates.map { e ->
+            when (e) {
+                is NeighbourEstimate.Located -> MapCircle(e.latitude, e.longitude, e.radiusM, LiveNeighbourDark, dashed = true)
+                is NeighbourEstimate.Range -> MapCircle(e.latitude, e.longitude, e.distanceM, LiveNeighbourDark, dashed = true)
+            }
+        }
+    }
+    val estimateDots = remember(shownEstimates) {
+        shownEstimates.map { e ->
+            when (e) {
+                is NeighbourEstimate.Located -> MapDot(
+                    latitude = e.latitude,
+                    longitude = e.longitude,
+                    color = LiveNeighbourDark,
+                    sizeDp = 15,
+                    title = tr("Nachbarzelle, geschätzt", "Neighbour cell, estimated") + " · " + neighbourLabel(e.cell),
+                    snippet = tr(
+                        "aus ${e.measurements} früheren Messungen in der Nähe, ±${formatDistance(e.radiusM)}",
+                        "from ${e.measurements} earlier measurements nearby, ±${formatDistance(e.radiusM)}",
+                    ),
+                    hollow = true,
+                )
+                is NeighbourEstimate.Range -> {
+                    // Kleiner Ring am Nordpunkt des Abstandskreises, damit er antippbar ist.
+                    val lat = e.latitude + e.distanceM / 110_540.0
+                    MapDot(
+                        latitude = lat,
+                        longitude = e.longitude,
+                        color = LiveNeighbourDark,
+                        sizeDp = 11,
+                        title = tr("Nachbarzelle, nur Abstand", "Neighbour cell, distance only") + " · " + neighbourLabel(e.cell),
+                        snippet = tr(
+                            "etwa ${formatDistance(e.distanceM)} entfernt (aus dem Pegel), Richtung unbekannt",
+                            "about ${formatDistance(e.distanceM)} away (from the signal level), direction unknown",
+                        ),
+                        hollow = true,
+                    )
+                }
+            }
+        }
+    }
+
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
     val visible = remember(assessed, showCandidates, showArtefacts) {
@@ -438,11 +500,11 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             OsmMap(
                 dots = when (mode) {
-                    MapMode.STATIONS -> osmDots + ocidDots + dots + liveDots
+                    MapMode.STATIONS -> osmDots + ocidDots + dots + estimateDots + liveDots
                     MapMode.TRACKING -> taDots
                     MapMode.COVERAGE -> emptyList()
                 },
-                circles = homeCircle + if (mode == MapMode.STATIONS) circles else emptyList(),
+                circles = homeCircle + if (mode == MapMode.STATIONS) circles + estimateCircles else emptyList(),
                 coverage = when (mode) {
                     MapMode.COVERAGE -> rects
                     MapMode.TRACKING -> taRects
@@ -488,7 +550,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             label = {
                                 Text(
                                     if (showLive && liveCells.isNotEmpty()) {
-                                        tr("Live: verbunden ${liveResult.servingShown} · Nachbarn ${liveResult.neighboursShown} von ${liveResult.neighboursHeard}", "Live: serving ${liveResult.servingShown} · neighbours ${liveResult.neighboursShown} of ${liveResult.neighboursHeard}") + when (scanBusy) {
+                                        tr("Live: verbunden ${liveResult.servingShown} · Nachbarn ${liveResult.neighboursShown} von ${liveResult.neighboursHeard}", "Live: serving ${liveResult.servingShown} · neighbours ${liveResult.neighboursShown} of ${liveResult.neighboursHeard}") +
+                                            (if (shownEstimates.isNotEmpty()) tr(", ${shownEstimates.size} geschätzt", ", ${shownEstimates.size} estimated") else "") + when (scanBusy) {
                                             Busy.CALL -> tr(" · Telefonat", " · call")
                                             Busy.DATA -> tr(" · Datenverkehr", " · data traffic")
                                             Busy.NONE -> ""
@@ -648,6 +711,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 private val OcidPurple = Color(0xFF7B3FB0)
 private val LiveServingColor = Color(0xFF1E9E3A)
 private val LiveNeighbourColor = Color(0xFF9EE29A)
+/** Dunkleres Hellgrün für Ränder geschätzter Nachbarzellen (auf hellen Karten sichtbar) */
+private val LiveNeighbourDark = Color(0xFF5CC25A)
 private const val LIVE_MAX_AGE_MS = 120_000L
 
 /** Mindestabstand, unter dem Nachbarstationen immer in die Sprechblase der verbundenen Station wandern */
