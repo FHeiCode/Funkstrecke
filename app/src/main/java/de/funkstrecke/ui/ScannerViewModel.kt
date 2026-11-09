@@ -338,28 +338,67 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     fun exportCells() {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val csv = withContext(Dispatchers.IO) {
-                val cells = dao.allCells()
-                val estimates = dao.allEstimatesOnce()
-                // Bewertung je Zelle aus den Stationen (inkl. OpenCelliD-Abgleich)
-                val osm = OsmIndex(
-                    osmDao.allMasts(),
-                    osmDao.freshTiles(System.currentTimeMillis() - OsmMasts.CACHE_DAYS * 24 * 3600 * 1000).toSet(),
-                )
-                val assessments = buildStations(cells, estimates, emptyList(), dao.allOcid(), osm)
-                    .flatMap { s -> s.cells.map { c -> c.id to de.funkstrecke.data.assessCell(s, c) } }
-                    .toMap()
-                CsvExport.cellsCsv(cells, estimates, assessments)
+            try {
+                val csv = withContext(Dispatchers.IO) {
+                    val cells = dao.allCells()
+                    val estimates = dao.allEstimatesOnce()
+                    // Bewertung je Zelle aus den Stationen (inkl. OpenCelliD-Abgleich)
+                    val osm = OsmIndex(
+                        osmDao.allMasts(),
+                        osmDao.freshTiles(System.currentTimeMillis() - OsmMasts.CACHE_DAYS * 24 * 3600 * 1000).toSet(),
+                    )
+                    val assessments = buildStations(cells, estimates, emptyList(), dao.allOcid(), osm)
+                        .flatMap { s -> s.cells.map { c -> c.id to de.funkstrecke.data.assessCell(s, c) } }
+                        .toMap()
+                    CsvExport.cellsCsv(cells, estimates, assessments)
+                }
+                CsvExport.share(app, tr("zellen", "cells"), csv)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                exportFailed(app, e)
             }
-            CsvExport.share(app, tr("zellen", "cells"), csv)
         }
+    }
+
+    private fun exportFailed(app: Application, e: Throwable) {
+        android.util.Log.e("Export", "CSV-Export fehlgeschlagen", e)
+        android.widget.Toast.makeText(
+            app,
+            tr("Export fehlgeschlagen: ", "Export failed: ") + (e.message ?: e.javaClass.simpleName),
+            android.widget.Toast.LENGTH_LONG,
+        ).show()
     }
 
     fun exportMeasurements() {
         val app = getApplication<Application>()
         viewModelScope.launch {
-            val csv = withContext(Dispatchers.IO) { CsvExport.measurementsCsv(dao.allMeasurements(), dao.allCells()) }
-            CsvExport.share(app, tr("messprotokoll", "measurements"), csv)
+            try {
+                // Seitenweise in die Datei schreiben: große Protokolle passen nicht am Stück in den Speicher.
+                val name = tr("messprotokoll", "measurements")
+                val file = withContext(Dispatchers.IO) {
+                    val byKey = dao.allCells().associateBy { it.id }
+                    val out = CsvExport.newFile(app, name)
+                    out.bufferedWriter().use { w ->
+                        var after = 0L
+                        var first = true
+                        while (true) {
+                            val page = dao.measurementsAfter(after, 5_000)
+                            if (page.isEmpty() && !first) break
+                            w.write(CsvExport.measurementsCsv(page, byKey, withHeader = first))
+                            first = false
+                            if (page.isEmpty()) break
+                            after = page.last().id
+                        }
+                    }
+                    out
+                }
+                CsvExport.share(app, name, file)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                exportFailed(app, e)
+            }
         }
     }
 

@@ -113,6 +113,10 @@ interface CellDao {
     @Query("SELECT * FROM measurements ORDER BY time")
     suspend fun allMeasurements(): List<MeasurementEntity>
 
+    /** Messungen seitenweise (für den Export großer Protokolle, ohne alles im Speicher zu halten) */
+    @Query("SELECT * FROM measurements WHERE id > :afterId ORDER BY id LIMIT :limit")
+    suspend fun measurementsAfter(afterId: Long, limit: Int): List<MeasurementEntity>
+
     @Query("SELECT * FROM measurements WHERE groupKey = :groupKey ORDER BY time DESC LIMIT :limit")
     suspend fun measurementsForGroup(groupKey: String, limit: Int): List<MeasurementEntity>
 

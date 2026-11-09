@@ -74,8 +74,8 @@ object CsvExport {
         return build(header, rows)
     }
 
-    fun measurementsCsv(measurements: List<MeasurementEntity>, cells: List<CellEntity>): String {
-        val byKey = cells.associateBy { it.id }
+    /** [withHeader] = false liefert nur die Datenzeilen (für seitenweises Schreiben). */
+    fun measurementsCsv(measurements: List<MeasurementEntity>, byKey: Map<String, CellEntity>, withHeader: Boolean = true): String {
         val header = if (Lang.english) {
             listOf(
                 "Time", "Technology", "Operator", "MCC", "MNC", "TAC/LAC", "Cell ID", "eNB ID", "Sector", "PCI", "ARFCN",
@@ -99,19 +99,31 @@ object CsvExport {
                 EndcMode.of(m.endc)?.label ?: "",
             )
         }
-        return build(header, rows)
+        return build(if (withHeader) header else null, rows)
     }
 
-    private fun build(header: List<String>, rows: List<List<String>>): String = buildString {
-        append('﻿')
-        append(header.joinToString(";") { escape(it) }).append("\r\n")
+    private fun build(header: List<String>?, rows: List<List<String>>): String = buildString {
+        if (header != null) {
+            append('﻿')
+            append(header.joinToString(";") { escape(it) }).append("\r\n")
+        }
         rows.forEach { append(it.joinToString(";") { v -> escape(v) }).append("\r\n") }
     }
 
-    fun share(context: Context, baseName: String, content: String) {
+    /** Zieldatei im Cache; alte Exporte werden vorher gelöscht. */
+    fun newFile(context: Context, baseName: String): File {
         val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-        val file = File(dir, "${baseName}_${LocalDate.now()}.csv")
+        dir.listFiles()?.forEach { it.delete() }
+        return File(dir, "${baseName}_${LocalDate.now()}.csv")
+    }
+
+    fun share(context: Context, baseName: String, content: String) {
+        val file = newFile(context, baseName)
         file.writeText(content)
+        share(context, baseName, file)
+    }
+
+    fun share(context: Context, baseName: String, file: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/csv"
@@ -119,6 +131,11 @@ object CsvExport {
             putExtra(Intent.EXTRA_SUBJECT, "Funkstrecke – $baseName")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(send, tr("Exportieren", "Export")))
+        // Der Aufruf kommt aus dem ViewModel (Application-Kontext): Ohne NEW_TASK wirft Android eine Ausnahme.
+        val chooser = Intent.createChooser(send, tr("Exportieren", "Export")).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            clipData = android.content.ClipData.newRawUri(file.name, uri)
+        }
+        context.startActivity(chooser)
     }
 }
