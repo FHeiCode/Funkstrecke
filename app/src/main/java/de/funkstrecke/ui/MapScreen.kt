@@ -47,7 +47,16 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import de.funkstrecke.radio.CellRecord
+import de.funkstrecke.service.ScanService
+import de.funkstrecke.util.PauseStore
+import de.funkstrecke.util.SettingsStore
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import de.funkstrecke.data.CoverageCell
 import de.funkstrecke.data.Reliability
 import de.funkstrecke.data.coverageFor
@@ -232,6 +241,70 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
         }
     }
+    // Live: Station der verbundenen Zelle grün, Stationen gemessener Nachbarzellen hellgrün.
+    // Abgleich über die Zellkennung; Nachbarn ohne Cell-ID über ARFCN/PCI, wie sie gespeichert sind.
+    val ownScan by vm.live.collectAsStateWithLifecycle()
+    val serviceScan by ScanService.lastScan.collectAsStateWithLifecycle()
+    val log by ScanService.state.collectAsStateWithLifecycle()
+    val settings by SettingsStore.flow.collectAsStateWithLifecycle()
+    val pausedUntil by PauseStore.pausedUntil.collectAsStateWithLifecycle()
+    val livePaused = pausedUntil > System.currentTimeMillis()
+    var showLive by rememberSaveable { mutableStateOf(true) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // Ohne Aufzeichnung scannt die Karte selbst (wie der Live-Tab), solange die Live-Ebene sichtbar ist.
+    LaunchedEffect(canLocate, log.running, settings.liveIntervalS, settings.forceRefresh, livePaused, mode, showLive) {
+        if (!canLocate || log.running || livePaused || mode != MapMode.STATIONS || !showLive) return@LaunchedEffect
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                vm.refreshLive(settings.forceRefresh)
+                delay(settings.liveIntervalS * 1000L)
+            }
+        }
+    }
+    val live = if (log.running && serviceScan.at != null) serviceScan else ownScan
+    // Ältere Scans (z. B. während einer Pause) nicht als aktuell zeigen.
+    val liveFresh = live.at?.let { System.currentTimeMillis() - it < LIVE_MAX_AGE_MS } == true
+    val liveCells = if (showLive && liveFresh && !livePaused) live.cells else emptyList()
+    val liveMatches: Map<String, LiveMatch> = remember(located, liveCells) {
+        if (liveCells.isEmpty()) {
+            emptyMap()
+        } else {
+            val byKey = liveCells.groupBy { it.key }
+            buildMap {
+                located.forEach { s ->
+                    val heard = s.cellIds.flatMap { byKey[it].orEmpty() }
+                    if (heard.isNotEmpty()) {
+                        val serving = heard.any { it.registered }
+                        val best = heard.filter { it.registered == serving }.maxByOrNull { it.dbm ?: Int.MIN_VALUE }!!
+                        put(s.key, LiveMatch(serving, best))
+                    }
+                }
+            }
+        }
+    }
+    val liveServingCount = liveMatches.values.count { it.serving }
+    val liveNeighbourCount = liveMatches.size - liveServingCount
+    val liveDots = remember(located, liveMatches) {
+        located.filter { it.key in liveMatches }.map { s ->
+            val m = liveMatches.getValue(s.key)
+            val e = s.estimate!!
+            val signal = listOfNotNull(
+                m.cell.band?.label,
+                m.cell.pci?.let { "PCI $it" },
+                m.cell.dbm?.let { "$it dBm" },
+            ).joinToString(" · ")
+            MapDot(
+                latitude = e.latitude,
+                longitude = e.longitude,
+                color = if (m.serving) LiveServingColor else LiveNeighbourColor,
+                sizeDp = if (m.serving) 22 else 17,
+                title = "${s.title} · " + if (m.serving) tr("verbunden", "serving") else tr("Nachbarzelle", "neighbour cell"),
+                snippet = listOfNotNull(s.operatorName, signal.ifEmpty { null }).joinToString(" · "),
+                onClick = { onOpen(s.key) },
+            )
+        }.sortedBy { it.sizeDp } // verbundene Station zuletzt, also obenauf
+    }
+
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
     val visible = remember(assessed, showCandidates, showArtefacts) {
@@ -254,8 +327,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
         }
     }
-    val dots = remember(visible) {
-        visible.map { (s, a) ->
+    val dots = remember(visible, liveMatches) {
+        visible.filter { (s, _) -> s.key !in liveMatches }.map { (s, a) ->
             val e = s.estimate!!
             val c = operatorColorRaw(s.operatorName)
             MapDot(
@@ -342,7 +415,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             OsmMap(
                 dots = when (mode) {
-                    MapMode.STATIONS -> osmDots + ocidDots + dots
+                    MapMode.STATIONS -> osmDots + ocidDots + dots + liveDots
                     MapMode.TRACKING -> taDots
                     MapMode.COVERAGE -> emptyList()
                 },
@@ -386,6 +459,25 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 }
                 if (mode == MapMode.STATIONS) {
                     ChipBar {
+                        FilterChip(
+                            selected = showLive,
+                            onClick = { showLive = !showLive },
+                            label = {
+                                Text(
+                                    if (showLive && liveMatches.isNotEmpty()) {
+                                        tr("Live: verbunden $liveServingCount · Nachbarn $liveNeighbourCount", "Live: serving $liveServingCount · neighbours $liveNeighbourCount")
+                                    } else {
+                                        "Live"
+                                    },
+                                )
+                            },
+                            leadingIcon = {
+                                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(LiveServingColor))
+                                    Box(Modifier.size(10.dp).clip(androidx.compose.foundation.shape.CircleShape).background(LiveNeighbourColor))
+                                }
+                            },
+                        )
                         if (located.isNotEmpty()) {
                             FilterChip(
                                 selected = true,
@@ -527,6 +619,12 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 }
 
 private val OcidPurple = Color(0xFF7B3FB0)
+private val LiveServingColor = Color(0xFF1E9E3A)
+private val LiveNeighbourColor = Color(0xFF9EE29A)
+private const val LIVE_MAX_AGE_MS = 120_000L
+
+/** Station im aktuellen Scan: verbunden oder als Nachbarzelle gemessen, mit der stärksten passenden Zelle. */
+private data class LiveMatch(val serving: Boolean, val cell: CellRecord)
 private val OcidImplausibleGrey = Color(0xFF8A8F96)
 private val OsmMastColor = Color(0xFF3D4650)
 
