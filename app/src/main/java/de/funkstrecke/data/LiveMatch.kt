@@ -2,8 +2,11 @@ package de.funkstrecke.data
 
 import de.funkstrecke.radio.CellRecord
 
-/** Station im aktuellen Scan: verbunden oder als Nachbarzelle gemessen, mit der stärksten passenden Zelle. */
-data class LiveMatch(val serving: Boolean, val cell: CellRecord)
+/**
+ * Station im aktuellen Scan: verbunden oder als Nachbarzelle gemessen, mit der stärksten passenden Zelle
+ * und allen dieser Station zugeordneten Nachbarzellen (bei der verbundenen Station: weitere Sektoren).
+ */
+data class LiveMatch(val serving: Boolean, val cell: CellRecord, val neighbourCells: List<CellRecord> = emptyList())
 
 /** Ergebnis des Abgleichs: Treffer je Stationsschlüssel und die Zahl der gehörten Zellen. */
 data class LiveMatches(
@@ -75,7 +78,7 @@ fun matchLiveCells(located: List<BaseStation>, live: List<CellRecord>): LiveMatc
     for ((s, records) in stationOf.entries.groupBy({ it.value }, { it.key })) {
         val serving = records.any { it.registered }
         val best = records.filter { it.registered == serving }.maxByOrNull { it.dbm ?: Int.MIN_VALUE } ?: continue
-        result[s.key] = LiveMatch(serving, best)
+        result[s.key] = LiveMatch(serving, best, records.filter { !it.registered && it.key !in servingKeys }.distinctBy { it.key })
     }
     return LiveMatches(result, servingKeys.size, neighbourKeys.size)
 }
