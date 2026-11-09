@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import de.funkstrecke.service.ScanService
+import de.funkstrecke.util.Busy
 import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.SettingsStore
 import kotlinx.coroutines.delay
@@ -262,6 +263,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
         }
     }
     val live = if (log.running && serviceScan.at != null) serviceScan else ownScan
+    val liveBusy by vm.liveBusy.collectAsStateWithLifecycle()
+    val scanBusy = if (log.running) log.busy else liveBusy
     // Ältere Scans (z. B. während einer Pause) nicht als aktuell zeigen.
     val liveFresh = live.at?.let { System.currentTimeMillis() - it < LIVE_MAX_AGE_MS } == true
     val liveCells = if (showLive && liveFresh && !livePaused) live.cells else emptyList()
@@ -285,7 +288,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 snippet = listOfNotNull(s.operatorName, signal.ifEmpty { null }).joinToString(" · "),
                 onClick = { onOpen(s.key) },
             )
-        }.sortedBy { it.sizeDp } // verbundene Station zuletzt, also obenauf
+        }.sortedByDescending { it.sizeDp } // Nachbarn zuletzt: am selben Standort liegen sie sonst unter dem grünen Punkt
     }
 
     val assessed = remember(located) { located.map { it to it.assessment } }
@@ -448,7 +451,11 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             label = {
                                 Text(
                                     if (showLive && liveCells.isNotEmpty()) {
-                                        tr("Live: verbunden ${liveResult.servingShown} · Nachbarn ${liveResult.neighboursShown} von ${liveResult.neighboursHeard}", "Live: serving ${liveResult.servingShown} · neighbours ${liveResult.neighboursShown} of ${liveResult.neighboursHeard}")
+                                        tr("Live: verbunden ${liveResult.servingShown} · Nachbarn ${liveResult.neighboursShown} von ${liveResult.neighboursHeard}", "Live: serving ${liveResult.servingShown} · neighbours ${liveResult.neighboursShown} of ${liveResult.neighboursHeard}") + when (scanBusy) {
+                                            Busy.CALL -> tr(" · Telefonat", " · call")
+                                            Busy.DATA -> tr(" · Datenverkehr", " · data traffic")
+                                            Busy.NONE -> ""
+                                        }
                                     } else {
                                         "Live"
                                     },
