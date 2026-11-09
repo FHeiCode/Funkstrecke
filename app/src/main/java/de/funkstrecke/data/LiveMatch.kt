@@ -52,25 +52,36 @@ fun matchLiveCells(located: List<BaseStation>, live: List<CellRecord>): LiveMatc
     }
 
     // Zuerst die exakten Treffer; die verbundene Station dient dann als Bezugspunkt.
+    // Exakt heißt: Zelle mit Cell-ID. Die Kennung einer Nachbarzelle ("nb|ARFCN|PCI") ist nicht eindeutig
+    // (PCI-Wiederholung) und gehört oft zu einer nur vermuteten Station mit weit gestreuter Schätzung;
+    // solche Zellen laufen deshalb immer über den Abgleich nach Träger und PCI.
     val stationOf = HashMap<CellRecord, BaseStation>()
-    for (r in live) byId[r.key]?.let { stationOf[r] = it }
+    for (r in live) if (r.cellId != null) byId[r.key]?.let { stationOf[r] = it }
     val anchor = live.filter { it.registered }.firstNotNullOfOrNull { stationOf[it] }?.estimate
 
     for (r in live) {
-        if (r in stationOf || r.pci == null || r.arfcn == null) continue
+        if (r in stationOf) continue
+        if (r.pci == null || r.arfcn == null) {
+            byId[r.key]?.let { stationOf[r] = it }
+            continue
+        }
         val candidates = byRadio["${r.rat}|${r.arfcn}|${r.pci}"].orEmpty().filter { (s, _) ->
             // Netz nur vergleichen, wenn beide Seiten es kennen.
             r.mcc == null || r.mnc == null || s.mcc == null || s.mnc == null || (r.mcc == s.mcc && r.mnc == s.mnc)
-        }.map { it.first }.distinctBy { it.key }
+        }
         if (candidates.isEmpty()) continue
-        val choice = if (anchor != null) {
-            candidates
-                .mapNotNull { st -> st.estimate?.let { e -> st to distanceM(anchor.latitude, anchor.longitude, e.latitude, e.longitude) } }
+        // Stationen, bei denen diese Zelle mit Cell-ID bekannt ist, gehen vor: Ihre Schätzung stammt von
+        // eindeutig erkannten Zellen. Erst danach Stationen, die die Zelle nur als Nachbarzelle führen.
+        fun pick(list: List<BaseStation>): BaseStation? = if (anchor != null) {
+            list.mapNotNull { st -> st.estimate?.let { e -> st to distanceM(anchor.latitude, anchor.longitude, e.latitude, e.longitude) } }
                 .filter { it.second <= RADIO_MATCH_MAX_M }
                 .minByOrNull { it.second }?.first
         } else {
-            candidates.maxByOrNull { it.lastSeen }
+            list.maxByOrNull { it.lastSeen }
         }
+        val identified = candidates.filter { (_, c) -> c.cellId != null }.map { it.first }.distinctBy { it.key }
+        val others = candidates.filter { (_, c) -> c.cellId == null }.map { it.first }.distinctBy { it.key }
+        val choice = pick(identified) ?: pick(others)
         if (choice != null) stationOf[r] = choice
     }
 
