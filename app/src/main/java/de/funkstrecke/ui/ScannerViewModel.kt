@@ -210,7 +210,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun updateNeighbourEstimates(cells: List<de.funkstrecke.radio.CellRecord>) {
         viewModelScope.launch {
-            val here = LocationHelper.lastKnown(app)
+            val here = LocationHelper.lastKnown(getApplication<Application>())
             if (here == null || cells.isEmpty()) {
                 _neighbourEstimates.value = emptyMap()
                 return@launch
