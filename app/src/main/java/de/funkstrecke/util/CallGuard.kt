@@ -3,6 +3,7 @@ package de.funkstrecke.util
 import android.content.Context
 import android.media.AudioManager
 import android.net.TrafficStats
+import android.os.Process
 import android.os.SystemClock
 
 /** Was beim Scannen passiert, während telefoniert oder viel übertragen wird. */
@@ -84,13 +85,23 @@ object CallGuard {
     private var lastSampleAt = 0L
     private var lastBusy = false
 
-    /** Mobiler Datendurchsatz seit dem letzten Aufruf (mindestens 1 s Fenster) über der Schwelle? */
+    /**
+     * Mobiler Datendurchsatz anderer Apps seit dem letzten Aufruf (mindestens 1 s Fenster) über der Schwelle?
+     * Der eigene Verkehr (Kartenkacheln, OSM-Masten, Geländedaten) zählt nicht: Sonst schaltete schon das
+     * Laden der Karte auf „nur mitlesen“, und der zwischengespeicherte Stand des Modems enthält oft nur
+     * ein oder zwei Nachbarzellen.
+     */
     @Synchronized
     fun dataBusy(): Boolean {
         val rx = TrafficStats.getMobileRxBytes()
         val tx = TrafficStats.getMobileTxBytes()
         if (rx == TrafficStats.UNSUPPORTED.toLong() || tx == TrafficStats.UNSUPPORTED.toLong()) return false
-        val bytes = rx + tx
+        val uid = Process.myUid()
+        val ownRx = TrafficStats.getUidRxBytes(uid)
+        val ownTx = TrafficStats.getUidTxBytes(uid)
+        val own = if (ownRx == TrafficStats.UNSUPPORTED.toLong() || ownTx == TrafficStats.UNSUPPORTED.toLong()) 0L else ownRx + ownTx
+        // Eigener Zähler umfasst auch WLAN; bei mobiler Verbindung ist er nahezu vollständig mobil.
+        val bytes = rx + tx - own
         val now = SystemClock.elapsedRealtime()
         if (lastBytes < 0 || bytes < lastBytes) {
             lastBytes = bytes
