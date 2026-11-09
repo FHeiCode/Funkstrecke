@@ -270,23 +270,60 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val liveCells = if (showLive && liveFresh && !livePaused) live.cells else emptyList()
     val liveResult = remember(located, liveCells) { matchLiveCells(located, liveCells) }
     val liveMatches = liveResult.byStation
-    val liveDots = remember(located, liveMatches) {
-        located.filter { it.key in liveMatches }.map { s ->
+    // Nachbarn, deren Punkt den grünen Punkt verdecken würde, werden nicht einzeln gezeichnet,
+    // sondern als Zahl in einer Sprechblase am grünen Punkt. „Zu nah“ hängt vom Zoom ab: etwa 24 dp.
+    val screenWidthDp = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.coerceAtLeast(200)
+    val mergeM = remember(viewBox, screenWidthDp) {
+        val b = viewBox
+        if (b == null) {
+            LIVE_MERGE_MIN_M
+        } else {
+            val widthM = de.funkstrecke.data.distanceM((b[0] + b[2]) / 2, b[1], (b[0] + b[2]) / 2, b[3])
+            maxOf(LIVE_MERGE_MIN_M, widthM * 24.0 / screenWidthDp)
+        }
+    }
+    val liveDots = remember(located, liveMatches, mergeM) {
+        val live = located.filter { it.key in liveMatches }
+        val servingStation = live.firstOrNull { liveMatches.getValue(it.key).serving }
+        val se = servingStation?.estimate
+        val merged = if (se == null) {
+            emptyList()
+        } else {
+            live.filter { s ->
+                val e = s.estimate!!
+                !liveMatches.getValue(s.key).serving && de.funkstrecke.data.distanceM(se.latitude, se.longitude, e.latitude, e.longitude) <= mergeM
+            }
+        }
+        val mergedKeys = merged.map { it.key }.toSet()
+        // Nachbarzellen am Standort: weitere Sektoren der verbundenen Station und die zusammengelegten Stationen.
+        val nearCells = (listOfNotNull(servingStation) + merged).flatMap { liveMatches.getValue(it.key).neighbourCells }.distinctBy { it.key }
+
+        fun signalOf(c: de.funkstrecke.radio.CellRecord) = listOfNotNull(
+            c.band?.label,
+            c.pci?.let { "PCI $it" },
+            c.dbm?.let { "$it dBm" },
+        ).joinToString(" · ")
+
+        live.filter { it.key !in mergedKeys }.map { s ->
             val m = liveMatches.getValue(s.key)
             val e = s.estimate!!
-            val signal = listOfNotNull(
-                m.cell.band?.label,
-                m.cell.pci?.let { "PCI $it" },
-                m.cell.dbm?.let { "$it dBm" },
-            ).joinToString(" · ")
+            val badge = if (m.serving && nearCells.isNotEmpty()) nearCells.size.toString() else null
+            val near = if (badge != null) {
+                "\n" + tr("${nearCells.size} Nachbarzellen am Standort: ", "${nearCells.size} neighbour cells at this site: ") +
+                    nearCells.sortedByDescending { it.dbm ?: Int.MIN_VALUE }.joinToString("; ") { signalOf(it) }
+            } else {
+                ""
+            }
             MapDot(
                 latitude = e.latitude,
                 longitude = e.longitude,
                 color = if (m.serving) LiveServingColor else LiveNeighbourColor,
                 sizeDp = if (m.serving) 22 else 17,
                 title = "${s.title} · " + if (m.serving) tr("verbunden", "serving") else tr("Nachbarzelle", "neighbour cell"),
-                snippet = listOfNotNull(s.operatorName, signal.ifEmpty { null }).joinToString(" · "),
+                snippet = listOfNotNull(s.operatorName, signalOf(m.cell).ifEmpty { null }).joinToString(" · ") + near,
                 onClick = { onOpen(s.key) },
+                badge = badge,
+                badgeColor = LiveNeighbourColor,
             )
         }.sortedByDescending { it.sizeDp } // Nachbarn zuletzt: am selben Standort liegen sie sonst unter dem grünen Punkt
     }
@@ -612,6 +649,9 @@ private val OcidPurple = Color(0xFF7B3FB0)
 private val LiveServingColor = Color(0xFF1E9E3A)
 private val LiveNeighbourColor = Color(0xFF9EE29A)
 private const val LIVE_MAX_AGE_MS = 120_000L
+
+/** Mindestabstand, unter dem Nachbarstationen immer in die Sprechblase der verbundenen Station wandern */
+private const val LIVE_MERGE_MIN_M = 30.0
 
 private val OcidImplausibleGrey = Color(0xFF8A8F96)
 private val OsmMastColor = Color(0xFF3D4650)

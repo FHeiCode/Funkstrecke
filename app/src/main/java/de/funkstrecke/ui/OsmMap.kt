@@ -54,6 +54,9 @@ data class MapDot(
     val hollow: Boolean = false,
     /** Als Mast-Dreieck statt als Punkt zeichnen (OSM-Funkmasten) */
     val mast: Boolean = false,
+    /** Kleine Sprechblase oben rechts am Punkt, z. B. Zahl der Nachbarzellen am selben Standort */
+    val badge: String? = null,
+    val badgeColor: Color = Color.White,
 )
 
 /** Dreieck mit weißem Rand: Symbol für einen Funkmast aus OpenStreetMap. */
@@ -199,6 +202,57 @@ private fun dotDrawable(context: Context, color: Color, sizeDp: Int, hollow: Boo
         setStroke((1.5f * density).toInt().coerceAtLeast(1), android.graphics.Color.WHITE)
         setSize(px, px)
     }
+}
+
+/**
+ * Punkt mit Sprechblase oben rechts. Die Bitmap ist rundum gleich groß erweitert, damit der Punkt
+ * in der Mitte bleibt und der Anker (Mitte) weiter auf der Position liegt.
+ */
+private fun badgedDotDrawable(context: Context, color: Color, sizeDp: Int, badge: String, badgeColor: Color): android.graphics.drawable.Drawable {
+    val density = context.resources.displayMetrics.density
+    val dot = sizeDp * density
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        textSize = 11f * density
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+        this.color = 0xFF10301A.toInt()
+        textAlign = Paint.Align.CENTER
+    }
+    val bubbleH = 16f * density
+    val bubbleW = maxOf(bubbleH, text.measureText(badge) + 9f * density)
+    val tail = 4f * density
+    // Blase sitzt mit ihrer linken unteren Ecke etwa am rechten oberen Rand des Punkts.
+    val half = maxOf(dot / 2f, dot * 0.35f + bubbleW, dot * 0.35f + bubbleH + tail) + 2f * density
+    val px = (2 * half).toInt()
+    val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val cx = px / 2f
+    val stroke = 1.5f * density
+    c.drawCircle(cx, cx, dot / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() })
+    c.drawCircle(cx, cx, dot / 2f - stroke / 2f, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = stroke; this.color = android.graphics.Color.WHITE
+    })
+    val left = cx + dot * 0.35f
+    val bottom = cx - dot * 0.35f
+    val rect = android.graphics.RectF(left, bottom - bubbleH - tail, left + bubbleW, bottom - tail)
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = badgeColor.toArgb() }
+    val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE; strokeWidth = stroke; this.color = 0xFF1E5A2E.toInt(); strokeJoin = Paint.Join.ROUND
+    }
+    val r = bubbleH / 2f
+    val path = android.graphics.Path().apply {
+        addRoundRect(rect, r, r, android.graphics.Path.Direction.CW)
+        // Spitze zur Punktmitte hin
+        moveTo(left + 2f * density, rect.bottom - 1f)
+        lineTo(left - 1f * density, bottom + 1f * density)
+        lineTo(left + 8f * density, rect.bottom - 1f)
+        close()
+    }
+    c.drawPath(path, fill)
+    c.drawPath(path, edge)
+    c.drawRoundRect(rect, r, r, fill)
+    val baseline = rect.centerY() - (text.descent() + text.ascent()) / 2f
+    c.drawText(badge, rect.centerX(), baseline, text)
+    return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
 }
 
 /** Worauf die Karte beim Öffnen zoomt. */
@@ -404,7 +458,11 @@ fun OsmMap(
             dots.forEach { d ->
                 added += Marker(map).apply {
                     position = GeoPoint(d.latitude, d.longitude)
-                    icon = if (d.mast) mastDrawable(context, d.color, d.sizeDp) else dotDrawable(context, d.color, d.sizeDp, d.hollow)
+                    icon = when {
+                        d.mast -> mastDrawable(context, d.color, d.sizeDp)
+                        d.badge != null -> badgedDotDrawable(context, d.color, d.sizeDp, d.badge, d.badgeColor)
+                        else -> dotDrawable(context, d.color, d.sizeDp, d.hollow)
+                    }
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     title = d.title
                     snippet = d.snippet
