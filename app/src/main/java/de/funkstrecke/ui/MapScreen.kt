@@ -51,7 +51,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.service.ScanService
 import de.funkstrecke.util.PauseStore
 import de.funkstrecke.util.SettingsStore
@@ -59,6 +58,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import de.funkstrecke.data.CoverageCell
 import de.funkstrecke.data.Reliability
+import de.funkstrecke.data.matchLiveCells
 import de.funkstrecke.data.coverageFor
 import de.funkstrecke.data.ocidLineWorthy
 import de.funkstrecke.data.ocidMarker
@@ -265,25 +265,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     // Ältere Scans (z. B. während einer Pause) nicht als aktuell zeigen.
     val liveFresh = live.at?.let { System.currentTimeMillis() - it < LIVE_MAX_AGE_MS } == true
     val liveCells = if (showLive && liveFresh && !livePaused) live.cells else emptyList()
-    val liveMatches: Map<String, LiveMatch> = remember(located, liveCells) {
-        if (liveCells.isEmpty()) {
-            emptyMap()
-        } else {
-            val byKey = liveCells.groupBy { it.key }
-            buildMap {
-                located.forEach { s ->
-                    val heard = s.cellIds.flatMap { byKey[it].orEmpty() }
-                    if (heard.isNotEmpty()) {
-                        val serving = heard.any { it.registered }
-                        val best = heard.filter { it.registered == serving }.maxByOrNull { it.dbm ?: Int.MIN_VALUE }!!
-                        put(s.key, LiveMatch(serving, best))
-                    }
-                }
-            }
-        }
-    }
-    val liveServingCount = liveMatches.values.count { it.serving }
-    val liveNeighbourCount = liveMatches.size - liveServingCount
+    val liveResult = remember(located, liveCells) { matchLiveCells(located, liveCells) }
+    val liveMatches = liveResult.byStation
     val liveDots = remember(located, liveMatches) {
         located.filter { it.key in liveMatches }.map { s ->
             val m = liveMatches.getValue(s.key)
@@ -464,8 +447,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                             onClick = { showLive = !showLive },
                             label = {
                                 Text(
-                                    if (showLive && liveMatches.isNotEmpty()) {
-                                        tr("Live: verbunden $liveServingCount · Nachbarn $liveNeighbourCount", "Live: serving $liveServingCount · neighbours $liveNeighbourCount")
+                                    if (showLive && liveCells.isNotEmpty()) {
+                                        tr("Live: verbunden ${liveResult.servingShown} · Nachbarn ${liveResult.neighboursShown} von ${liveResult.neighboursHeard}", "Live: serving ${liveResult.servingShown} · neighbours ${liveResult.neighboursShown} of ${liveResult.neighboursHeard}")
                                     } else {
                                         "Live"
                                     },
@@ -623,8 +606,6 @@ private val LiveServingColor = Color(0xFF1E9E3A)
 private val LiveNeighbourColor = Color(0xFF9EE29A)
 private const val LIVE_MAX_AGE_MS = 120_000L
 
-/** Station im aktuellen Scan: verbunden oder als Nachbarzelle gemessen, mit der stärksten passenden Zelle. */
-private data class LiveMatch(val serving: Boolean, val cell: CellRecord)
 private val OcidImplausibleGrey = Color(0xFF8A8F96)
 private val OsmMastColor = Color(0xFF3D4650)
 

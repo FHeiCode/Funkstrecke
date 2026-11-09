@@ -165,8 +165,8 @@ data class BaseStation(
     val identified: Boolean get() = cells.any { it.cellId != null }
     private val allCells: List<CellEntity> get() = cells + linked.map { it.cell }
 
-    /** Kennungen aller Zellen dieser Station (wie CellRecord.key), zum Abgleich mit dem Live-Scan */
-    val cellIds: Set<String> get() = allCells.mapTo(HashSet()) { it.id }
+    /** Alle Zellen dieser Station einschließlich zugeordneter Nachbarzellen, zum Abgleich mit dem Live-Scan */
+    val allCellEntities: List<CellEntity> get() = allCells
     val lastSeen: Long get() = allCells.maxOf { it.lastSeen }
     val firstSeen: Long get() = allCells.minOf { it.firstSeen }
     val bestDbm: Int? get() = allCells.mapNotNull { it.bestDbm }.maxOrNull()
