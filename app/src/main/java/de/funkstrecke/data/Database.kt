@@ -217,7 +217,7 @@ interface CellDao {
         CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class,
         OsmMastEntity::class, OsmTileEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -227,6 +227,21 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var instance: AppDatabase? = null
+
+        /**
+         * 6 → 7: Sammelzellen mit ungültiger Cell-ID entfernen (2^28 − 1 bzw. 2^36 − 1). Unter ihnen waren
+         * alle Nachbarzellen vermischt gespeichert; ihre Messungen lassen sich keiner Zelle mehr zuordnen.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val bad = "SELECT id FROM cells WHERE cellId IN (268435455, 68719476735)"
+                val badGroups = "SELECT groupKey FROM cells WHERE cellId IN (268435455, 68719476735)"
+                db.execSQL("DELETE FROM measurements WHERE cellKey IN ($bad)")
+                db.execSQL("DELETE FROM opencellid WHERE cellKey IN ($bad)")
+                db.execSQL("DELETE FROM estimates WHERE groupKey IN ($badGroups)")
+                db.execSQL("DELETE FROM cells WHERE cellId IN (268435455, 68719476735)")
+            }
+        }
 
         /** 5 → 6: Zwischenspeicher für Funkmasten aus OpenStreetMap. */
         val MIGRATION_5_6 = object : Migration(5, 6) {
@@ -283,7 +298,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "funkstrecke.db",
                 )
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()

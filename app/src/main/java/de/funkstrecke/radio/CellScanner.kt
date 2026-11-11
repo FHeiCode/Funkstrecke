@@ -108,6 +108,21 @@ object CellScanner {
     private fun Long.orNull(): Long? = if (this == Long.MAX_VALUE) null else this
 
     /**
+     * Manche Modems melden für Nachbarzellen statt „unbekannt“ den höchsten möglichen Wert als Cell-ID
+     * (LTE/UMTS: 2^28 − 1, NR: 2^36 − 1, GSM: 65535). Das ist keine echte Zelle: Ohne diese Prüfung
+     * landeten alle Nachbarzellen unter einer einzigen Kennung.
+     */
+    private fun Long.validCellId(rat: String): Long? = when {
+        this < 0 -> null
+        rat == "2G" && this == 65_535L -> null
+        rat != "2G" && (this == INVALID_ECI || this == INVALID_NCI) -> null
+        else -> this
+    }
+
+    const val INVALID_ECI = 268_435_455L
+    const val INVALID_NCI = 68_719_476_735L
+
+    /**
      * Scannt alle aktiven SIMs (Dual-SIM, falls "Telefonstatus" erlaubt ist).
      * Mit [forceRefresh] misst das Modem neu (genauer, braucht mehr Strom),
      * sonst liefert Android den letzten bekannten Stand.
@@ -202,7 +217,7 @@ object CellScanner {
         } else {
             id.mcc.orNull()?.toString() to id.mnc.orNull()?.toString()?.padStart(2, '0')
         }
-        val eci = id.ci.orNull()?.toLong()
+        val eci = id.ci.orNull()?.toLong()?.validCellId("4G")
         val earfcn = id.earfcn.orNull()
         val reportedBand = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) id.bands.firstOrNull() else null
         return CellRecord(
@@ -237,7 +252,7 @@ object CellScanner {
             registered = info.isRegistered,
             mcc = id.mccString, mnc = id.mncString, plmnInferred = false,
             area = id.tac.orNull(),
-            cellId = id.nci.orNull(),
+            cellId = id.nci.orNull()?.validCellId("5G"),
             nodeId = null,
             sector = null,
             pci = id.pci.orNull(),
@@ -265,7 +280,7 @@ object CellScanner {
             registered = info.isRegistered,
             mcc = mcc, mnc = mnc, plmnInferred = false,
             area = id.lac.orNull(),
-            cellId = id.cid.orNull()?.toLong(),
+            cellId = id.cid.orNull()?.toLong()?.validCellId("2G"),
             nodeId = null, sector = null,
             pci = id.bsic.orNull(),
             arfcn = arfcn,
@@ -292,7 +307,7 @@ object CellScanner {
             registered = info.isRegistered,
             mcc = mcc, mnc = mnc, plmnInferred = false,
             area = id.lac.orNull(),
-            cellId = id.cid.orNull()?.toLong(),
+            cellId = id.cid.orNull()?.toLong()?.validCellId("3G"),
             nodeId = null, sector = null,
             pci = id.psc.orNull(),
             arfcn = id.uarfcn.orNull(),
