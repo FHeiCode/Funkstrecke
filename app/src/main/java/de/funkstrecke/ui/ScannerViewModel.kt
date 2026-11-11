@@ -18,8 +18,6 @@ import de.funkstrecke.data.TrackingAreaMap
 import de.funkstrecke.data.buildTrackingAreas
 import de.funkstrecke.data.MeasurementEntity
 import de.funkstrecke.data.Recorder
-import de.funkstrecke.data.NeighbourEstimate
-import de.funkstrecke.data.NeighbourEstimator
 import de.funkstrecke.data.buildStations
 import de.funkstrecke.data.distanceM
 import de.funkstrecke.locate.LocationEstimator
@@ -30,7 +28,6 @@ import de.funkstrecke.radio.LiveScan
 import de.funkstrecke.util.Busy
 import de.funkstrecke.util.CallGuard
 import de.funkstrecke.util.CsvExport
-import de.funkstrecke.util.LocationHelper
 import de.funkstrecke.util.SettingsStore
 import de.funkstrecke.util.tr
 import kotlinx.coroutines.Dispatchers
@@ -198,42 +195,6 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     /** Ein Live-Scan; die gehörten Zellen landen ohne Position in der Datenbank. */
     private val _liveBusy = MutableStateFlow(Busy.NONE)
     val liveBusy: StateFlow<Busy> = _liveBusy.asStateFlow()
-
-    private val _neighbourEstimates = MutableStateFlow<Map<String, NeighbourEstimate>>(emptyMap())
-    /** Schätzungen für gemessene, aber keiner verorteten Station zugeordnete Nachbarzellen (Schlüssel = Zellkennung) */
-    val neighbourEstimates: StateFlow<Map<String, NeighbourEstimate>> = _neighbourEstimates.asStateFlow()
-    private var neighbourCache = mapOf<String, Pair<NeighbourEstimate, Long>>()
-
-    /**
-     * Rechnet die Schätzungen für [cells] neu. Ergebnisse aus aufgezeichneten Messungen werden eine Minute
-     * wiederverwendet; der Abstand aus dem Pegel folgt jedem Scan.
-     */
-    fun updateNeighbourEstimates(cells: List<de.funkstrecke.radio.CellRecord>) {
-        viewModelScope.launch {
-            val here = LocationHelper.lastKnown(getApplication<Application>())
-            if (here == null || cells.isEmpty()) {
-                _neighbourEstimates.value = emptyMap()
-                return@launch
-            }
-            val now = System.currentTimeMillis()
-            val result = withContext(Dispatchers.Default) {
-                cells.mapNotNull { c ->
-                    val cached = neighbourCache[c.key]
-                    val est = if (cached != null && cached.first is NeighbourEstimate.Located && now - cached.second < 60_000) {
-                        (cached.first as NeighbourEstimate.Located).copy(cell = c)
-                    } else {
-                        NeighbourEstimator.estimate(db, c, here.latitude, here.longitude)
-                    }
-                    est?.let { c.key to it }
-                }.toMap()
-            }
-            neighbourCache = result.mapValues { (k, v) ->
-                val old = neighbourCache[k]
-                v to if (old != null && v is NeighbourEstimate.Located && old.first is NeighbourEstimate.Located) old.second else now
-            }
-            _neighbourEstimates.value = result
-        }
-    }
 
     suspend fun refreshLive(forceRefresh: Boolean) {
         val app = getApplication<Application>()
