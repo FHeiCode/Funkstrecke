@@ -269,7 +269,10 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     // Ältere Scans (z. B. während einer Pause) nicht als aktuell zeigen.
     val liveFresh = live.at?.let { System.currentTimeMillis() - it < LIVE_MAX_AGE_MS } == true
     val liveCells = if (showLive && liveFresh && !livePaused) live.cells else emptyList()
-    val liveResult = remember(located, liveCells) { matchLiveCells(located, liveCells) }
+    val liveResult = remember(located, liveCells) {
+        val here = LocationHelper.lastKnown(context)?.let { it.latitude to it.longitude }
+        matchLiveCells(located, liveCells, here)
+    }
     val liveMatches = liveResult.byStation
     // Nachbarn, deren Punkt den grünen Punkt verdecken würde, werden nicht einzeln gezeichnet,
     // sondern als Zahl in einer Sprechblase am grünen Punkt. „Zu nah“ hängt vom Zoom ab: etwa 24 dp.

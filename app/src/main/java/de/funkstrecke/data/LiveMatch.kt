@@ -22,20 +22,23 @@ data class LiveMatches(
     }
 }
 
-/** Höchstabstand zur verbundenen Station, wenn eine Nachbarzelle nur über ARFCN/PCI zugeordnet wird. */
-private const val RADIO_MATCH_MAX_M = 30_000.0
+/** „In der Nähe“: Höchstabstand der Station zur eigenen Position (ersatzweise zur verbundenen Station). */
+const val NEIGHBOUR_MATCH_MAX_M = 10_000.0
 
 /**
  * Ordnet die Zellen eines Live-Scans den verorteten Stationen zu.
  *
- * 1. Gleiche Zellkennung (CellRecord.key = CellEntity.id).
- * 2. Sonst gleiche Technik, gleicher Träger (ARFCN) und gleiche PCI. Nötig, weil Nachbarzellen meist
- *    ohne Cell-ID gemeldet werden und unter einer eigenen Kennung („nb|ARFCN|PCI“) gespeichert sind.
- *    Diese Einträge haben oft keine eigene Schätzung, dieselbe Zelle ist aber als verbundene Zelle
- *    (mit ECI) einer verorteten Station bekannt. Gibt es mehrere Stationen mit diesem Träger und
- *    dieser PCI (PCI-Wiederholung), gewinnt die nächste zur verbundenen Station, sonst die zuletzt gesehene.
+ * 1. Zellen mit Cell-ID (in der Regel die verbundene): gleiche Zellkennung.
+ * 2. Nachbarzellen kommen meist ohne Cell-ID, nur mit Träger (ARFCN) und PCI. Sie werden einer Station
+ *    zugeordnet, die
+ *    - als *zuverlässig* oder *Kandidat* bewertet ist,
+ *    - eine Zelle mit gleicher Technik, gleichem Band, gleichem ARFCN und gleicher PCI hat und
+ *    - höchstens [NEIGHBOUR_MATCH_MAX_M] von [here] (eigene Position, sonst verbundene Station) entfernt ist.
+ *    Bei mehreren Treffern (PCI-Wiederholung) gewinnt die nächste; Stationen, die diese Zelle mit
+ *    Cell-ID kennen, gehen vor. Ohne jeden Bezugspunkt gewinnt die zuletzt gesehene.
+ *    Mögliche Artefakte werden nie als Nachbar markiert.
  */
-fun matchLiveCells(located: List<BaseStation>, live: List<CellRecord>): LiveMatches {
+fun matchLiveCells(located: List<BaseStation>, live: List<CellRecord>, here: Pair<Double, Double>? = null): LiveMatches {
     if (live.isEmpty()) return LiveMatches.EMPTY
     val servingKeys = live.filter { it.registered }.map { it.key }.toSet()
     val neighbourKeys = live.filter { !it.registered }.map { it.key }.toSet() - servingKeys
@@ -43,38 +46,32 @@ fun matchLiveCells(located: List<BaseStation>, live: List<CellRecord>): LiveMatc
     val byId = HashMap<String, BaseStation>()
     val byRadio = HashMap<String, MutableList<Pair<BaseStation, CellEntity>>>()
     for (s in located) {
+        val rated = s.assessment.reliability != Reliability.ARTEFACT
         for (c in s.allCellEntities) {
-            byId.putIfAbsent(c.id, s)
-            if (c.pci != null && c.arfcn != null) {
+            if (c.cellId != null) byId.putIfAbsent(c.id, s)
+            if (rated && c.pci != null && c.arfcn != null) {
                 byRadio.getOrPut("${c.rat}|${c.arfcn}|${c.pci}") { mutableListOf() } += s to c
             }
         }
     }
 
-    // Zuerst die exakten Treffer; die verbundene Station dient dann als Bezugspunkt.
-    // Exakt heißt: Zelle mit Cell-ID. Die Kennung einer Nachbarzelle ("nb|ARFCN|PCI") ist nicht eindeutig
-    // (PCI-Wiederholung) und gehört oft zu einer nur vermuteten Station mit weit gestreuter Schätzung;
-    // solche Zellen laufen deshalb immer über den Abgleich nach Träger und PCI.
     val stationOf = HashMap<CellRecord, BaseStation>()
     for (r in live) if (r.cellId != null) byId[r.key]?.let { stationOf[r] = it }
-    val anchor = live.filter { it.registered }.firstNotNullOfOrNull { stationOf[it] }?.estimate
+    val reference = here ?: live.filter { it.registered }.firstNotNullOfOrNull { stationOf[it] }?.estimate
+        ?.let { it.latitude to it.longitude }
 
     for (r in live) {
-        if (r in stationOf) continue
-        if (r.pci == null || r.arfcn == null) {
-            byId[r.key]?.let { stationOf[r] = it }
-            continue
-        }
-        val candidates = byRadio["${r.rat}|${r.arfcn}|${r.pci}"].orEmpty().filter { (s, _) ->
-            // Netz nur vergleichen, wenn beide Seiten es kennen.
-            r.mcc == null || r.mnc == null || s.mcc == null || s.mnc == null || (r.mcc == s.mcc && r.mnc == s.mnc)
+        if (r in stationOf || r.pci == null || r.arfcn == null) continue
+        val band = r.band?.label
+        val candidates = byRadio["${r.rat}|${r.arfcn}|${r.pci}"].orEmpty().filter { (s, c) ->
+            // Band und Netz nur vergleichen, wenn beide Seiten sie kennen.
+            (band == null || c.band == null || band == c.band) &&
+                (r.mcc == null || r.mnc == null || s.mcc == null || s.mnc == null || (r.mcc == s.mcc && r.mnc == s.mnc))
         }
         if (candidates.isEmpty()) continue
-        // Stationen, bei denen diese Zelle mit Cell-ID bekannt ist, gehen vor: Ihre Schätzung stammt von
-        // eindeutig erkannten Zellen. Erst danach Stationen, die die Zelle nur als Nachbarzelle führen.
-        fun pick(list: List<BaseStation>): BaseStation? = if (anchor != null) {
-            list.mapNotNull { st -> st.estimate?.let { e -> st to distanceM(anchor.latitude, anchor.longitude, e.latitude, e.longitude) } }
-                .filter { it.second <= RADIO_MATCH_MAX_M }
+        fun pick(list: List<BaseStation>): BaseStation? = if (reference != null) {
+            list.mapNotNull { st -> st.estimate?.let { e -> st to distanceM(reference.first, reference.second, e.latitude, e.longitude) } }
+                .filter { it.second <= NEIGHBOUR_MATCH_MAX_M }
                 .minByOrNull { it.second }?.first
         } else {
             list.maxByOrNull { it.lastSeen }
