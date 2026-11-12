@@ -209,6 +209,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     // mögliches Artefakt = nur Ring ohne Kreis (standardmäßig ausgeblendet).
     var showCandidates by rememberSaveable { mutableStateOf(true) }
     var showArtefacts by rememberSaveable { mutableStateOf(false) }
+    // Stationen, die nur aus PCI-Gruppe und Messorten vermutet wurden (ohne Cell-ID): blass und ausblendbar.
+    var showPciGroups by rememberSaveable { mutableStateOf(true) }
     var showOcid by rememberSaveable { mutableStateOf(true) }
     var showOsm by rememberSaveable { mutableStateOf(true) }
     // Sichtbarer Ausschnitt: OSM-Masten werden nur dafür geladen und gezeichnet.
@@ -333,8 +335,10 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
-    val visible = remember(assessed, showCandidates, showArtefacts) {
-        assessed.filter { (_, a) ->
+    val pciGroupCount = remember(located) { located.count { it.inferred } }
+    val visible = remember(assessed, showCandidates, showArtefacts, showPciGroups) {
+        assessed.filter { (s, a) ->
+            if (s.inferred && !showPciGroups) return@filter false
             when (a.reliability) {
                 Reliability.RELIABLE -> true
                 Reliability.CANDIDATE -> showCandidates
@@ -345,7 +349,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val circles = remember(visible) {
         visible.mapNotNull { (s, a) ->
             val e = s.estimate!!
-            if (a.reliability == Reliability.ARTEFACT || e.radiusM > 2_000) {
+            if (a.reliability == Reliability.ARTEFACT || s.inferred || e.radiusM > 2_000) {
                 null
             } else {
                 val c = operatorColorRaw(s.operatorName)
@@ -360,13 +364,18 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             MapDot(
                 latitude = e.latitude,
                 longitude = e.longitude,
-                color = if (a.reliability == Reliability.CANDIDATE) c.copy(alpha = 0.6f) else c,
-                sizeDp = when (a.reliability) {
-                    Reliability.RELIABLE -> 18
-                    Reliability.CANDIDATE -> 14
-                    Reliability.ARTEFACT -> 12
+                color = when {
+                    s.inferred -> c.copy(alpha = PCI_GROUP_ALPHA)
+                    a.reliability == Reliability.CANDIDATE -> c.copy(alpha = 0.6f)
+                    else -> c
                 },
-                title = "${s.title} · ${a.reliability.label}",
+                sizeDp = when {
+                    s.inferred -> 10
+                    a.reliability == Reliability.RELIABLE -> 18
+                    a.reliability == Reliability.CANDIDATE -> 14
+                    else -> 12
+                },
+                title = "${s.title} · " + if (s.inferred) tr("nur PCI-Gruppe", "PCI group only") else a.reliability.label,
                 snippet = "${s.operatorName ?: tr("Unbekannt", "Unknown")} · ${a.reason}",
                 onClick = { onOpen(s.key) },
                 hollow = a.reliability == Reliability.ARTEFACT,
@@ -527,6 +536,21 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                                 label = { Text(tr("Artefakte ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}", "Artefacts ${reliabilityCounts[Reliability.ARTEFACT] ?: 0}")) },
                                 leadingIcon = { ReliabilityDot(Reliability.ARTEFACT) },
                             )
+                            if (pciGroupCount > 0) {
+                                FilterChip(
+                                    selected = showPciGroups,
+                                    onClick = { showPciGroups = !showPciGroups },
+                                    label = { Text(tr("PCI-Gruppen $pciGroupCount", "PCI groups $pciGroupCount")) },
+                                    leadingIcon = {
+                                        Box(
+                                            Modifier
+                                                .size(9.dp)
+                                                .clip(androidx.compose.foundation.shape.CircleShape)
+                                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = PCI_GROUP_ALPHA)),
+                                        )
+                                    },
+                                )
+                            }
                             FilterChip(
                                 selected = showOcid,
                                 onClick = { showOcid = !showOcid },
@@ -652,6 +676,9 @@ private val OcidPurple = Color(0xFF7B3FB0)
 private val LiveServingColor = Color(0xFF1E9E3A)
 private val LiveNeighbourColor = Color(0xFF9EE29A)
 private const val LIVE_MAX_AGE_MS = 120_000L
+
+/** Deckkraft für Stationen, die nur über die PCI-Gruppe vermutet wurden */
+private const val PCI_GROUP_ALPHA = 0.35f
 
 /** Mindestabstand, unter dem Nachbarstationen immer in die Sprechblase der verbundenen Station wandern */
 private const val LIVE_MERGE_MIN_M = 30.0
