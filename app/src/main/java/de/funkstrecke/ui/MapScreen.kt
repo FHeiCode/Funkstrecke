@@ -209,7 +209,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     // mögliches Artefakt = nur Ring ohne Kreis (standardmäßig ausgeblendet).
     var showCandidates by rememberSaveable { mutableStateOf(true) }
     var showArtefacts by rememberSaveable { mutableStateOf(false) }
-    // Stationen, die nur aus PCI-Gruppe und Messorten vermutet wurden (ohne Cell-ID): blass und ausblendbar.
+    // Stationen ohne Cell-ID (lose Nachbarzellen und nur über die PCI-Gruppe vermutete): blass und ausblendbar.
     var showPciGroups by rememberSaveable { mutableStateOf(true) }
     var showOcid by rememberSaveable { mutableStateOf(true) }
     var showOsm by rememberSaveable { mutableStateOf(true) }
@@ -335,10 +335,10 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
-    val pciGroupCount = remember(located) { located.count { it.inferred } }
+    val pciGroupCount = remember(located) { located.count { it.withoutCellId } }
     val visible = remember(assessed, showCandidates, showArtefacts, showPciGroups) {
         assessed.filter { (s, a) ->
-            if (s.inferred && !showPciGroups) return@filter false
+            if (s.withoutCellId && !showPciGroups) return@filter false
             when (a.reliability) {
                 Reliability.RELIABLE -> true
                 Reliability.CANDIDATE -> showCandidates
@@ -349,7 +349,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val circles = remember(visible) {
         visible.mapNotNull { (s, a) ->
             val e = s.estimate!!
-            if (a.reliability == Reliability.ARTEFACT || s.inferred || e.radiusM > 2_000) {
+            if (a.reliability == Reliability.ARTEFACT || s.withoutCellId || e.radiusM > 2_000) {
                 null
             } else {
                 val c = operatorColorRaw(s.operatorName)
@@ -365,17 +365,21 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 latitude = e.latitude,
                 longitude = e.longitude,
                 color = when {
-                    s.inferred -> c.copy(alpha = PCI_GROUP_ALPHA)
+                    s.withoutCellId -> c.copy(alpha = PCI_GROUP_ALPHA)
                     a.reliability == Reliability.CANDIDATE -> c.copy(alpha = 0.6f)
                     else -> c
                 },
                 sizeDp = when {
-                    s.inferred -> 10
+                    s.withoutCellId -> 10
                     a.reliability == Reliability.RELIABLE -> 18
                     a.reliability == Reliability.CANDIDATE -> 14
                     else -> 12
                 },
-                title = "${s.title} · " + if (s.inferred) tr("nur PCI-Gruppe", "PCI group only") else a.reliability.label,
+                title = "${s.title} · " + when {
+                    s.inferred -> tr("nur PCI-Gruppe", "PCI group only")
+                    s.withoutCellId -> tr("ohne Cell-ID", "no cell ID")
+                    else -> a.reliability.label
+                },
                 snippet = "${s.operatorName ?: tr("Unbekannt", "Unknown")} · ${a.reason}",
                 onClick = { onOpen(s.key) },
                 hollow = a.reliability == Reliability.ARTEFACT,
@@ -540,7 +544,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                                 FilterChip(
                                     selected = showPciGroups,
                                     onClick = { showPciGroups = !showPciGroups },
-                                    label = { Text(tr("PCI-Gruppen $pciGroupCount", "PCI groups $pciGroupCount")) },
+                                    label = { Text(tr("Ohne Cell-ID $pciGroupCount", "No cell ID $pciGroupCount")) },
                                     leadingIcon = {
                                         Box(
                                             Modifier
@@ -677,7 +681,7 @@ private val LiveServingColor = Color(0xFF1E9E3A)
 private val LiveNeighbourColor = Color(0xFF9EE29A)
 private const val LIVE_MAX_AGE_MS = 120_000L
 
-/** Deckkraft für Stationen, die nur über die PCI-Gruppe vermutet wurden */
+/** Deckkraft für Stationen ohne Cell-ID (lose Nachbarzellen, PCI-Gruppen) */
 private const val PCI_GROUP_ALPHA = 0.35f
 
 /** Mindestabstand, unter dem Nachbarstationen immer in die Sprechblase der verbundenen Station wandern */

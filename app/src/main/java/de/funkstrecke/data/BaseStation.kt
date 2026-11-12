@@ -180,6 +180,9 @@ data class BaseStation(
     val pciGroups: List<Int>
         get() = if (supportsPciGroups(rat)) allCells.mapNotNull { it.pci }.map(::pciGroup).distinct().sorted() else emptyList()
 
+    /** Ohne Cell-ID: lose Nachbarzelle oder nur über die PCI-Gruppe vermutete Station */
+    val withoutCellId: Boolean get() = inferred || cells.all { it.cellId == null }
+
     /** Gruppenschlüssel aller Messungen, die zu dieser Station gezeigt werden */
     val measurementKeys: List<String> get() = allCells.map { it.groupKey }.distinct()
 
