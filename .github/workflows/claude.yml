@@ -1,0 +1,89 @@
+name: Claude
+
+# Neue Issues bearbeitet Claude automatisch (Fehlerbehebung auf einem fix/-Branch mit Testbuild).
+# Danach reagiert Claude auf Kommentare mit @claude in Issues und Pull Requests, z. B. auf die Release-Frage.
+# Regeln für Branches, Versionen und Releases stehen in CLAUDE.md.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  id-token: write
+
+# Pro Issue bzw. Pull Request nur ein Lauf gleichzeitig.
+concurrency:
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  # Neues Issue: Fehler beheben, Branch fix/<Nr>-…, Pull Request, Testbuild, Release-Frage.
+  fix-issue:
+    if: github.event_name == 'issues' && github.event.issue.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Damit Claude die App selbst bauen und testen kann (Android-SDK ist auf ubuntu-latest vorhanden).
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.8.2"
+          cache-provider: basic
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          branch_prefix: "fix/"
+          prompt: |
+            Bearbeite das neue Issue #${{ github.event.issue.number }} im Repository ${{ github.repository }}.
+            Titel: ${{ github.event.issue.title }}
+            Lies Text und Kommentare mit `gh issue view ${{ github.event.issue.number }} --comments`.
+            Halte dich genau an CLAUDE.md (Abschnitt „Fehlerbehebung aus einem Issue“).
+            Ist das Issue unklar, frag in einem Kommentar im Issue nach und ändere nichts.
+          claude_args: |
+            --max-turns 80
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(gradle:*),Bash(python3:*),Bash(ls:*),Bash(cat:*),Bash(sed:*),Bash(grep:*)"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # Kommentar mit @claude (z. B. Antwort auf die Release-Frage oder eine Rückfrage zum Fix).
+  respond:
+    if: |
+      (github.event_name == 'issue_comment' || github.event_name == 'pull_request_review_comment') &&
+      contains(github.event.comment.body, '@claude') &&
+      github.event.comment.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: "9.8.2"
+          cache-provider: basic
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          branch_prefix: "fix/"
+          claude_args: |
+            --max-turns 60
+            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(git:*),Bash(gh:*),Bash(gradle:*),Bash(python3:*),Bash(ls:*),Bash(cat:*),Bash(sed:*),Bash(grep:*)"
+        env:
+          GH_TOKEN: ${{ github.token }}
