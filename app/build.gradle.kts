@@ -8,12 +8,16 @@ plugins {
 // kann Android eine installierte App aktualisieren, statt sie neu installieren zu müssen.
 val signingKeystore: String? = System.getenv("SIGNING_KEYSTORE_FILE")
 
-// Versionscode steigt mit jedem GitHub-Build automatisch; Versionsname aus dem Release-Tag
-// (v2.3 → 2.3, 2.3 → 2.3), nur bei Release-Builds, nicht bei Branches.
+// Versionscode steigt mit jedem GitHub-Build automatisch.
+// Versionsname: Release-Builds genau die Version (RELEASE_VERSION aus dem Workflow oder der Release-Tag),
+// alle anderen Builds version.txt plus Build-Nummer, z. B. 2.22.3-build512.
 val runNumber: Int? = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()
+val baseVersion: String = rootProject.file("version.txt").readText().trim()
 val tagName: String? = System.getenv("GITHUB_REF_NAME")
     ?.takeIf { System.getenv("GITHUB_REF")?.startsWith("refs/tags/") == true }
     ?.takeIf { it.matches(Regex("[vV]?\\d+(\\.\\d+)*")) }
+val releaseVersion: String? = System.getenv("RELEASE_VERSION")?.takeIf { it.isNotBlank() }
+    ?: tagName?.trimStart('v', 'V')
 
 android {
     namespace = "de.funkstrecke"
@@ -24,7 +28,7 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = if (runNumber != null) 100 + runNumber else 4
-        versionName = tagName?.trimStart('v', 'V') ?: if (runNumber != null) "2.37-build$runNumber" else "2.37"
+        versionName = releaseVersion ?: if (runNumber != null) "$baseVersion-build$runNumber" else baseVersion
     }
 
     signingConfigs {
