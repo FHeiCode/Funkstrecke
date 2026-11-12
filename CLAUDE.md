@@ -24,6 +24,11 @@ Android-App (Kotlin, Jetpack Compose, Material3, JDK 17). Antworten und Kommenta
   2. `release-notes.md` neu schreiben: erste Zeile Titel, Leerzeile, dann kurze Stichpunkte zu allen Änderungen seit dem letzten Release (`gh release view --json tagName` und `git log v<letzte>..HEAD`), einfache Sprache,
   3. committen, pushen, im PR „Version X, bereit zum Mergen“ kommentieren.
   Nach dem Merge legt „Android-Build“ auf `master` das Release `v<Version>` mit APK selbst an.
+- **PR schon gemergt** (z. B. vor der Antwort gemergt): Nicht beim Link stehen bleiben. Stattdessen
+  1. neuen Branch `fix/release-<Version>` vom aktuellen `master` anlegen, darauf nur `version.txt` und `release-notes.md` wie oben ändern, committen, pushen,
+  2. selbst einen Pull Request gegen `master` anlegen: `gh pr create --base master --head fix/release-<Version> --title "Version <Version>" --body "Release zu #<Issue> (PR #<alter PR> war schon gemergt)."`,
+  3. im alten PR kommentieren: Link zum neuen PR und „bitte mergen, danach entsteht das Release“.
+  Nicht selbst mergen.
 
 ## Versionsregel (MAJOR.MINOR.PATCH)
 Ausgangspunkt ist das letzte Release (`gh release view --json tagName`), sonst `version.txt`.
