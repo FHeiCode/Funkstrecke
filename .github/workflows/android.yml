@@ -19,6 +19,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Release-Automatik: Steht in version.txt auf master eine Version, zu der es noch kein Release gibt,
+      # baut dieser Lauf genau diese Version und legt das Release v<Version> mit der APK an.
+      # (Ein Release, das der Workflow selbst anlegt, startet keinen weiteren Lauf; darum alles in einem.)
+      - name: Release nötig?
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(tr -d '[:space:]' < version.txt)
+          if ! echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::version.txt muss MAJOR.MINOR.PATCH enthalten, ist aber '$V'"; exit 1
+          fi
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "Release v$V gibt es schon, kein neues Release."
+          else
+            echo "Neues Release v$V"
+            echo "RELEASE_VERSION=$V" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -52,7 +71,11 @@ jobs:
 
       - name: APK umbenennen
         run: |
-          NAME="funkstrecke-${GITHUB_REF_NAME//\//-}.apk"
+          if [ -n "$RELEASE_VERSION" ]; then
+            NAME="funkstrecke-v$RELEASE_VERSION.apk"
+          else
+            NAME="funkstrecke-${GITHUB_REF_NAME//\//-}.apk"
+          fi
           cp app/build/outputs/apk/debug/app-debug.apk "$NAME"
           # Zusätzlich fester Name: .../releases/latest/download/funkstrecke.apk zeigt immer auf das neueste Release.
           cp app/build/outputs/apk/debug/app-debug.apk funkstrecke.apk
@@ -69,6 +92,32 @@ jobs:
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v3
         with:
+          files: |
+            ${{ env.APK_NAME }}
+            funkstrecke.apk
+
+      # Neues Release aus version.txt: Titel und Text aus release-notes.md (erste Zeile = Titel).
+      - name: Release-Text vorbereiten
+        if: env.RELEASE_VERSION != ''
+        run: |
+          if [ -s release-notes.md ]; then
+            head -n1 release-notes.md | sed 's/^#* *//' > "$RUNNER_TEMP/title.txt"
+            tail -n +2 release-notes.md | sed '/./,$!d' > "$RUNNER_TEMP/body.md"
+          else
+            echo "Funkstrecke $RELEASE_VERSION" > "$RUNNER_TEMP/title.txt"
+            : > "$RUNNER_TEMP/body.md"
+          fi
+          echo "RELEASE_TITLE=$(cat "$RUNNER_TEMP/title.txt")" >> "$GITHUB_ENV"
+
+      - name: Release anlegen
+        if: env.RELEASE_VERSION != ''
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ env.RELEASE_VERSION }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ env.RELEASE_TITLE }}
+          body_path: ${{ runner.temp }}/body.md
+          make_latest: true
           files: |
             ${{ env.APK_NAME }}
             funkstrecke.apk
