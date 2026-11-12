@@ -57,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -169,7 +170,13 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Funkstrecke")
+                        // Issue #10: Titel fett und 50 % größer (Standard titleLarge = 22 sp → 33 sp)
+                        Text(
+                            "Funkstrecke",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 33.sp,
+                        )
                         Text(
                             live.at?.let { tr("Live-Scan · ${formatAgo(it, now)} · ${live.cells.size} Zellen hörbar", "Live scan · ${formatAgo(it, now)} · ${live.cells.size} cells audible") }
                                 ?: tr("Live-Scan", "Live scan"),

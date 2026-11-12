@@ -5,6 +5,7 @@ Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der U
 ## Funktionen
 
 **Live** – alle Zellen, die das Handy gerade hört, alle 3 Sekunden aktualisiert:
+(Der Titel „Funkstrecke“ oben ist fett und 50 % größer.)
 - Technik (2G/3G/4G/5G), Betreiber, MCC, MNC, TAC/LAC
 - Cell-ID (ECI/NCI/CID), bei 4G zerlegt in eNodeB-ID und Sektor
 - PCI/PSC/BSIC, (E/NR-)ARFCN, Band und Downlink-Frequenz
