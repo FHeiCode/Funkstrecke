@@ -1,6 +1,6 @@
-Lernen: schneller zur gut verorteten Zelle
+Lernen: Timing Advance und Pegelabfall getrennt
 
-- Frühere Messungen einer Zelle als Nachbarzelle zählen jetzt für ihre Station mit. Eine Zelle startet bei der ersten Verbindung deshalb nicht mehr bei null.
-- Die App lernt an Stationen mit bekanntem Standort, wie schnell der Pegel je Band mit dem Abstand fällt und wie weit der Timing-Advance-Abstand des Handys danebenliegt.
-- Das Gelernte wird nur verwendet, wenn es an Stationen mit OSM-Mast nicht schlechter abschneidet als die feste Vorgabe.
-- Einstellungen → Lernen: Schalter, gelernte Werte, Prüfergebnis und „Jetzt lernen“.
+- Das Gelernte besteht jetzt aus zwei Teilen, die einzeln geprüft und einzeln verwendet werden: Timing Advance und Pegelabfall je Band.
+- Timing Advance darf genauer gelernt werden als bisher (bis ±30 m statt mindestens ±60 m).
+- Der Pegelabfall wird nur noch aus Zellen gelernt, die auch als Nachbarzelle gemessen wurden. Vorher kam ein zu flacher Abfall heraus.
+- Einstellungen → Lernen zeigt für beide Teile Stand, Werte und Prüfergebnis.

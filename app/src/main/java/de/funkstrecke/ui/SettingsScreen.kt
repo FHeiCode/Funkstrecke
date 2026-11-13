@@ -385,27 +385,52 @@ private fun TerrainSettings(vm: ScannerViewModel) {
     }
 }
 
-/** Gelerntes Signalmodell: Schalter, Prüfergebnis und die gelernten Werte je Band. */
+/** Zeile mit dem Ergebnis der Prüfung eines Modellteils. */
+@Composable
+private fun CheckLine(check: ModelCheck?) {
+    Text(
+        if (check == null || check.medianDefaultM == null || check.medianLearnedM == null) {
+            tr("Prüfung: keine Station mit OSM-Mast zum Vergleichen.", "Check: no station with an OSM mast to compare.")
+        } else {
+            tr(
+                "Prüfung an ${check.stations} Stationen mit OSM-Mast (mindestens ${ModelCheck.MIN_STATIONS} nötig): Median-Abstand zum Mast " +
+                    "mit Vorgabe ${formatDistance(check.medianDefaultM)}, gelernt ${formatDistance(check.medianLearnedM)} · " +
+                    "${check.improved} näher, ${check.worse} weiter weg",
+                "Check at ${check.stations} stations with an OSM mast (at least ${ModelCheck.MIN_STATIONS} needed): median distance to the mast " +
+                    "with default ${formatDistance(check.medianDefaultM)}, learned ${formatDistance(check.medianLearnedM)} · " +
+                    "${check.improved} closer, ${check.worse} farther",
+            )
+        },
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+/** Gelerntes Signalmodell: Schalter und je Teil (Timing Advance, Pegelabfall) Stand, Werte und Prüfergebnis. */
 @Composable
 private fun LearningSettings(vm: ScannerViewModel) {
     val state by SignalModelStore.state.collectAsStateWithLifecycle()
     val learning by vm.learning.collectAsStateWithLifecycle()
     val model = state.learned
-    val check = state.check
+    val mono = androidx.compose.ui.text.font.FontFamily.Monospace
+    fun status(applied: Boolean) = when {
+        !state.enabled -> tr("ausgeschaltet", "switched off")
+        applied -> tr("in Verwendung", "in use")
+        else -> tr("nicht in Verwendung, Prüfung nicht bestanden", "not in use, check not passed")
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(tr("Aus bekannten Stationen lernen", "Learn from known stations"), style = MaterialTheme.typography.titleSmall)
                 Text(
                     tr(
-                        "An Stationen mit gut bekanntem Standort (OSM-Mast oder enge eigene Schätzung) misst die App, wie schnell der " +
-                            "Pegel je Band mit dem Abstand fällt und wie weit der Timing-Advance-Abstand deines Handys danebenliegt. " +
-                            "Neue Zellen werden damit verortet. Verwendet wird das Gelernte nur, wenn es an Stationen mit OSM-Mast " +
-                            "nicht schlechter abschneidet als die feste Vorgabe. Gelernt wird höchstens einmal am Tag.",
-                        "At stations with a well-known location (OSM mast or tight own estimate) the app measures how fast the " +
-                            "level drops with distance per band and how far off your phone's timing-advance distance is. " +
-                            "New cells are located with it. What was learned is only used if, at stations with an OSM mast, " +
-                            "it does no worse than the fixed default. Learning runs at most once a day.",
+                        "An Stationen mit gut bekanntem Standort (OSM-Mast oder enge eigene Schätzung) lernt die App zwei Dinge: " +
+                            "wie genau der Timing-Advance-Abstand deines Handys ist, und wie schnell der Pegel je Band mit dem Abstand fällt. " +
+                            "Jeder Teil wird für sich an Stationen mit OSM-Mast geprüft und nur verwendet, wenn er nicht schlechter " +
+                            "abschneidet als die feste Vorgabe. Gelernt wird höchstens einmal am Tag.",
+                        "At stations with a well-known location (OSM mast or tight own estimate) the app learns two things: " +
+                            "how precise your phone's timing-advance distance is, and how fast the level drops with distance per band. " +
+                            "Each part is checked separately at stations with an OSM mast and only used if it does no worse " +
+                            "than the fixed default. Learning runs at most once a day.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -414,58 +439,61 @@ private fun LearningSettings(vm: ScannerViewModel) {
             Spacer(Modifier.width(12.dp))
             Switch(checked = state.enabled, onCheckedChange = { vm.setLearnedModelEnabled(it) })
         }
-        Text(
-            when {
-                learning -> tr("Lerne und prüfe …", "Learning and checking …")
-                model == null -> tr("Noch nicht gelernt.", "Not learned yet.")
-                model.isDefault -> tr(
-                    "Noch zu wenige Daten: ${model.references} Stationen mit bekanntem Standort reichen für kein Band.",
-                    "Not enough data yet: ${model.references} stations with known location are not enough for any band.",
+        when {
+            learning -> Text(tr("Lerne und prüfe …", "Learning and checking …"), style = MaterialTheme.typography.bodyMedium)
+            model == null -> Text(tr("Noch nicht gelernt.", "Not learned yet."), style = MaterialTheme.typography.bodyMedium)
+            else -> {
+                Text(
+                    tr("Gelernt an ${model.references} Stationen, ${formatDateTime(model.learnedAt)}", "Learned at ${model.references} stations, ${formatDateTime(model.learnedAt)}"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                state.applied -> tr("In Verwendung", "In use") + " · " +
-                    tr("gelernt an ${model.references} Stationen, ${formatDateTime(model.learnedAt)}", "learned at ${model.references} stations, ${formatDateTime(model.learnedAt)}")
-                !state.enabled -> tr("Ausgeschaltet: Es gilt die feste Vorgabe.", "Switched off: the fixed default applies.")
-                else -> tr("Nicht in Verwendung: Die Prüfung ist nicht bestanden, es gilt die feste Vorgabe.", "Not in use: the check did not pass, the fixed default applies.")
-            },
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (!learning && check != null && model != null && !model.isDefault) {
-            Text(
-                if (check.medianDefaultM == null || check.medianLearnedM == null) {
-                    tr("Prüfung: keine Station mit OSM-Mast zum Vergleichen.", "Check: no station with an OSM mast to compare.")
-                } else {
-                    tr(
-                        "Prüfung an ${check.stations} Stationen mit OSM-Mast (mindestens ${ModelCheck.MIN_STATIONS} nötig): Median-Abstand zum Mast " +
-                            "mit Vorgabe ${formatDistance(check.medianDefaultM)}, gelernt ${formatDistance(check.medianLearnedM)} · " +
-                            "${check.improved} näher, ${check.worse} weiter weg",
-                        "Check at ${check.stations} stations with an OSM mast (at least ${ModelCheck.MIN_STATIONS} needed): median distance to the mast " +
-                            "with default ${formatDistance(check.medianDefaultM)}, learned ${formatDistance(check.medianLearnedM)} · " +
-                            "${check.improved} closer, ${check.worse} farther",
+
+                Text(tr("Timing Advance: ", "Timing advance: ") + if (model.ta.isEmpty()) tr("noch zu wenige Daten", "not enough data yet") else status(state.taApplied), style = MaterialTheme.typography.bodyMedium)
+                if (model.ta.isNotEmpty()) {
+                    model.ta.toSortedMap().forEach { (rat, t) ->
+                        Text(
+                            "$rat: ${if (t.offsetM >= 0) "+" else "−"}${kotlin.math.abs(t.offsetM).toInt()} m · ±${t.sigmaM.toInt()} m · ${t.samples} " + tr("Messungen", "measurements"),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = mono,
+                        )
+                    }
+                    CheckLine(state.taCheck)
+                    Text(tr("Vorgabe: 4G +0 m · ±80 m", "Default: 4G +0 m · ±80 m"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                Text(tr("Pegelabfall je Band: ", "Level drop per band: ") + if (model.bands.isEmpty()) tr("noch zu wenige Daten", "not enough data yet") else status(state.bandsApplied), style = MaterialTheme.typography.bodyMedium)
+                if (model.bands.isEmpty()) {
+                    val progress = de.funkstrecke.data.SignalLearning.lastProgress
+                    Text(
+                        tr(
+                            "Gelernt wird nur aus Zellen, die auch als Nachbarzelle gemessen wurden (mindestens 5 Messorte): Nur dort sind auch " +
+                                "schwache Pegel in der Ferne erfasst. Bisher ${progress.cellsWithNeighbours} Zellen, nötig sind ${progress.needed} je Band " +
+                                "mit zusammen 80 Messorten. Das füllt sich mit jeder Aufzeichnung.",
+                            "Learning only uses cells that were also measured as a neighbour cell (at least 5 measuring spots): only there are " +
+                                "weak levels far away captured too. So far ${progress.cellsWithNeighbours} cells; ${progress.needed} per band " +
+                                "with 80 measuring spots in total are needed. This fills up with every recording.",
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
                     )
-                },
-                style = MaterialTheme.typography.bodySmall,
-            )
-            model.bands.toSortedMap().forEach { (key, b) ->
-                Text(
-                    (if (key.endsWith("/*")) key.removeSuffix("/*") + tr(" alle Bänder", " all bands") else key.replace("/", " ")) +
-                        ": n = ${"%.2f".format(Lang.locale, b.exponent)} · ${b.levelAt(1_000.0).toInt()} dBm " + tr("in 1 km", "at 1 km") +
-                        " · ±${"%.0f".format(Lang.locale, b.sigmaDb)} dB · ${b.cells} " + tr("Zellen", "cells"),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                )
+                } else {
+                    model.bands.toSortedMap().forEach { (key, b) ->
+                        Text(
+                            (if (key.endsWith("/*")) key.removeSuffix("/*") + tr(" alle Bänder", " all bands") else key.replace("/", " ")) +
+                                ": n = ${"%.2f".format(Lang.locale, b.exponent)} · ${b.levelAt(1_000.0).toInt()} dBm " + tr("in 1 km", "at 1 km") +
+                                " · ±${"%.0f".format(Lang.locale, b.sigmaDb)} dB · ${b.cells} " + tr("Zellen", "cells"),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = mono,
+                        )
+                    }
+                    CheckLine(state.bandCheck)
+                    Text(
+                        tr("Vorgabe für alle Bänder: n = 3,00 · −95 dBm in 1 km · ±6 dB", "Default for all bands: n = 3.00 · −95 dBm at 1 km · ±6 dB"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            model.ta.toSortedMap().forEach { (rat, t) ->
-                Text(
-                    "$rat Timing Advance: ${if (t.offsetM >= 0) "+" else "−"}${kotlin.math.abs(t.offsetM).toInt()} m · ±${t.sigmaM.toInt()} m · ${t.samples} " + tr("Messungen", "measurements"),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                )
-            }
-            Text(
-                tr("Vorgabe für alle Bänder: n = 3,00 · −95 dBm in 1 km · ±6 dB", "Default for all bands: n = 3.00 · −95 dBm at 1 km · ±6 dB"),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
         OutlinedButton(onClick = { vm.learnSignalModel() }, enabled = !learning) {
             Text(tr("Jetzt lernen", "Learn now"))

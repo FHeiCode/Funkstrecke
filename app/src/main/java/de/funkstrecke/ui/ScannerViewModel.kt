@@ -82,7 +82,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         // Signalmodell höchstens einmal am Tag neu lernen, sobald die Stationen geladen sind.
         viewModelScope.launch {
             delay(20_000)
-            val learnedAt = SignalModelStore.state.value.learned?.learnedAt ?: 0L
+            // Ohne getrennte Prüfergebnisse (Stand vor der Aufteilung) sofort neu lernen.
+            val learnedAt = SignalModelStore.state.value.takeIf { it.taCheck != null }?.learned?.learnedAt ?: 0L
             // Einmalig alle Schätzungen neu rechnen, damit vorhandene Nachbarmessungen sofort mitzählen.
             if (!prefs.getBoolean(RECOMPUTE_ADOPTION, false)) {
                 Recorder.recomputeAll(db)
@@ -117,8 +118,8 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     val all = stations.value
                     val references = SignalLearning.references(all)
                     val model = SignalLearning.learn(db, references)
-                    val check = SignalLearning.check(db, all, references)
-                    SignalModelStore.save(model, check)
+                    val checks = SignalLearning.check(db, all, references)
+                    SignalModelStore.save(model, checks.ta, checks.bands)
                 }
                 if (SignalModelStore.active != before) Recorder.recomputeAll(db)
             } catch (e: kotlinx.coroutines.CancellationException) {

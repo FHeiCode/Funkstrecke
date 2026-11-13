@@ -52,7 +52,18 @@ object SignalLearning {
         }
     }
 
-    private class Point(val logD: Double, val rss: Double)
+    /** [neighbour]: An diesem Messort wurde die Zelle (auch) als Nachbarzelle gemessen. */
+    private class Point(val logD: Double, val rss: Double, val neighbour: Boolean)
+
+    /** So viele Messorte als Nachbarzelle braucht eine Zelle, damit ihr Pegelabfall zählt */
+    private const val MIN_NEIGHBOUR_POINTS = 5
+
+    /** Zahl der Zellen je Band, die für den Pegelabfall schon genug Nachbarmessungen haben (für die Anzeige) */
+    data class Progress(val cellsWithNeighbours: Int, val needed: Int)
+
+    @Volatile
+    var lastProgress: Progress = Progress(0, MIN_CELLS)
+        private set
 
     private fun median(v: List<Double>): Double = v.sorted().let { if (it.size % 2 == 1) it[it.size / 2] else (it[it.size / 2 - 1] + it[it.size / 2]) / 2 }
 
@@ -72,7 +83,7 @@ object SignalLearning {
             for ((cellKey, list) in usable.groupBy { it.cellKey }) {
                 val points = list.groupBy { (it.latitude / BIN_DEG).toInt() to (it.longitude / BIN_DEG).toInt() }.values.mapNotNull { bin ->
                     val d = distanceM(ref.latitude, ref.longitude, bin.map { it.latitude }.average(), bin.map { it.longitude }.average())
-                    if (d < MIN_DISTANCE_M || d > MAX_DISTANCE_M) null else Point(log10(d), bin.map { it.dbm!!.toDouble() }.average())
+                    if (d < MIN_DISTANCE_M || d > MAX_DISTANCE_M) null else Point(log10(d), bin.map { it.dbm!!.toDouble() }.average(), bin.any { !it.serving })
                 }
                 if (points.size >= 3) {
                     val band = input.bandOf[cellKey] ?: "?"
@@ -89,6 +100,10 @@ object SignalLearning {
             }
         }
 
+        lastProgress = Progress(
+            byBand.filterKeys { it.endsWith("/*") }.values.sumOf { cells -> cells.count { usableForSlope(it) } },
+            MIN_CELLS,
+        )
         val bands = HashMap<String, BandModel>()
         for ((key, cells) in byBand) {
             if (key.endsWith("/?")) continue
@@ -100,16 +115,27 @@ object SignalLearning {
             val default = SignalModel.DEFAULT.ta(rat)
             ta[rat] = TaModel(
                 offsetM = median(diffs).coerceIn(-400.0, 400.0),
-                sigmaM = robustSigma(diffs).coerceIn(default.sigmaM * 0.75, default.sigmaM * 4),
+                // Untergrenze nahe der Stufenbreite: LTE 78 m je Stufe ≈ ±23 m, GSM 554 m ≈ ±160 m.
+                sigmaM = robustSigma(diffs).coerceIn(if (rat == "2G") 200.0 else 30.0, default.sigmaM * 4),
                 samples = diffs.size,
             )
         }
         return SignalModel(bands, ta, now, references.size)
     }
 
-    private fun fitBand(cells: List<List<Point>>): BandModel? {
-        // Steigung nur aus Zellen mit genug Messorten über mindestens Faktor 2 im Abstand.
-        val slopeCells = cells.filter { c -> c.size >= 5 && c.maxOf { it.logD } - c.minOf { it.logD } >= 0.3 }
+    /**
+     * Für den Pegelabfall zählen nur Zellen mit genug Messorten über mindestens Faktor 2 im Abstand, die auch
+     * als Nachbarzelle gemessen wurden. Als verbundene Zelle wird eine Zelle nur dort gemessen, wo sie stark
+     * ist: In der Ferne fehlen die schwachen Orte, und der Pegel scheint langsamer zu fallen, als er es tut
+     * (gelernt wurde so n ≈ 2 statt 3–4). Nachbarmessungen füllen diese Lücke.
+     */
+    private fun usableForSlope(c: List<Point>): Boolean =
+        c.size >= 5 && c.maxOf { it.logD } - c.minOf { it.logD } >= 0.3 && c.count { it.neighbour } >= MIN_NEIGHBOUR_POINTS
+
+    private fun fitBand(all: List<List<Point>>): BandModel? {
+        val slopeCells = all.filter { usableForSlope(it) }
+        // Auch Grundpegel und Streuung nur aus diesen Zellen, damit beides zum Exponenten passt.
+        val cells = slopeCells
         val n = slopeCells.sumOf { it.size }
         if (slopeCells.size < MIN_CELLS || n < MIN_POINTS) return null
         var sxx = 0.0
@@ -141,37 +167,47 @@ object SignalLearning {
         )
     }
 
+    /** Prüfergebnisse der beiden Teile des gelernten Modells */
+    class Checks(val ta: ModelCheck, val bands: ModelCheck)
+
     /**
      * Prüft das Lernen an Stationen mit OSM-Mast (höchstens 300 m neben der Schätzung), ohne dass sie sich
      * selbst bestätigen: Die Referenzen werden in zwei Hälften geteilt, gelernt wird jeweils auf der einen,
-     * gemessen auf der anderen. Verglichen wird der Abstand der Schätzung zum Mast mit Vorgabe und gelerntem Modell.
+     * gemessen auf der anderen. Verglichen wird der Abstand der Schätzung zum Mast mit der Vorgabe und
+     * – getrennt – mit nur der gelernten Timing-Advance-Korrektur und mit nur dem gelernten Pegelmodell.
      */
-    suspend fun check(db: AppDatabase, stations: List<BaseStation>, references: List<Reference>): ModelCheck {
+    suspend fun check(db: AppDatabase, stations: List<BaseStation>, references: List<Reference>): Checks {
         fun fold(key: String) = (key.hashCode() and 0x7fffffff) % 2
         val targets = stations.filter { s ->
             !s.inferred && s.estimate != null && s.osmMast != null && (s.osmMastDistanceM ?: Double.MAX_VALUE) <= 300.0
         }
         val elevation: ((Double, Double) -> Double?)? = if (Terrain.enabled) Terrain::elevation else null
-        val pairs = ArrayList<Pair<Double, Double>>()
+        val taPairs = ArrayList<Pair<Double, Double>>()
+        val bandPairs = ArrayList<Pair<Double, Double>>()
         for (f in 0..1) {
             val model = learn(db, references.filter { fold(it.key) != f })
             if (model.isDefault) continue
+            val taOnly = model.copy(bands = emptyMap())
+            val bandsOnly = model.copy(ta = emptyMap())
             for (s in targets.filter { fold(it.key) == f }) {
                 val mast = s.osmMast!!
                 val input = Recorder.measurementsForEstimate(db, s.key)
-                val a = LocationEstimator.estimate(s.rat, input.measurements, elevation) ?: continue
-                val b = LocationEstimator.estimate(s.rat, input.measurements, elevation, model, input.bandOf) ?: continue
-                if (!a.method.startsWith("Multilateration") || !b.method.startsWith("Multilateration")) continue
-                pairs += distanceM(a.latitude, a.longitude, mast.latitude, mast.longitude) to
-                    distanceM(b.latitude, b.longitude, mast.latitude, mast.longitude)
+                fun error(m: SignalModel): Double? =
+                    LocationEstimator.estimate(s.rat, input.measurements, elevation, m, input.bandOf)
+                        ?.takeIf { it.method.startsWith("Multilateration") }
+                        ?.let { distanceM(it.latitude, it.longitude, mast.latitude, mast.longitude) }
+                val base = error(SignalModel.DEFAULT) ?: continue
+                if (taOnly.ta.isNotEmpty()) error(taOnly)?.let { taPairs += base to it }
+                if (bandsOnly.bands.isNotEmpty()) error(bandsOnly)?.let { bandPairs += base to it }
             }
         }
-        return ModelCheck(
+        fun result(pairs: List<Pair<Double, Double>>) = ModelCheck(
             stations = pairs.size,
             medianDefaultM = if (pairs.isEmpty()) null else median(pairs.map { it.first }),
             medianLearnedM = if (pairs.isEmpty()) null else median(pairs.map { it.second }),
             improved = pairs.count { it.second < it.first - 10 },
             worse = pairs.count { it.second > it.first + 10 },
         )
+        return Checks(result(taPairs), result(bandPairs))
     }
 }
