@@ -85,6 +85,9 @@ data class BaseStation(
     val osmMastDistanceM: Double? = null,
     /** Abstand der Schätzung zum nächsten anderen Maststandort in OSM (null = keiner im Umkreis von 1 km) */
     val osmOtherSiteDistanceM: Double? = null,
+    /** OSM-Masten rund um die Schätzung wurden schon geladen */
+    val osmChecked: Boolean = false,
+) {
     /** Ein OSM-Mast liegt nah an der Schätzung (≤ 100 m), egal ob eindeutig */
     val osmMastNear: Boolean get() = osmMastDistanceM != null && osmMastDistanceM <= OsmMasts.CONFIRM_M
 
@@ -100,9 +103,6 @@ data class BaseStation(
         get() = osmMastDistanceM != null && osmMastDistanceM <= 300.0 &&
             (osmOtherSiteDistanceM == null || osmOtherSiteDistanceM >= OsmMasts.CHECK_ISOLATION_M)
 
-    /** OSM-Masten rund um die Schätzung wurden schon geladen */
-    val osmChecked: Boolean = false,
-) {
     /** Bewertung: zuverlässig, Kandidat oder mögliches Artefakt (beste Zelle zählt) */
     val assessment: Assessment get() = assessStation(this)
 
