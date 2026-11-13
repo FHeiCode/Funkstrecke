@@ -336,6 +336,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val assessed = remember(located) { located.map { it to it.assessment } }
     val reliabilityCounts = remember(assessed) { assessed.groupingBy { it.second.reliability }.eachCount() }
     val pciGroupCount = remember(located) { located.count { it.withoutCellId } }
+    val suspectGroups by vm.suspectGroups.collectAsStateWithLifecycle()
     val visible = remember(assessed, showCandidates, showArtefacts, showPciGroups) {
         assessed.filter { (s, a) ->
             if (s.withoutCellId && !showPciGroups) return@filter false
@@ -355,6 +356,22 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                 val c = operatorColorRaw(s.operatorName)
                 MapCircle(e.latitude, e.longitude, e.radiusM, if (a.reliability == Reliability.RELIABLE) c else c.copy(alpha = 0.5f))
             }
+        }
+    }
+    // Verdächtige Stationen: kleines Fischchen („fishy“) neben dem Punkt.
+    val fishDots = remember(visible, suspectGroups) {
+        visible.filter { (s, _) -> s.cells.any { it.groupKey in suspectGroups } }.mapNotNull { (s, _) ->
+            val e = s.estimate ?: return@mapNotNull null
+            MapDot(
+                latitude = e.latitude,
+                longitude = e.longitude,
+                color = FishColor,
+                sizeDp = 18,
+                title = s.title + " · " + tr("verdächtig", "suspect"),
+                snippet = tr("Wird gelöscht, wenn sie in der Nähe zu selten gemessen wird.", "Will be deleted if measured too rarely nearby."),
+                onClick = { onOpen(s.key) },
+                fish = true,
+            )
         }
     }
     val dots = remember(visible, liveMatches) {
@@ -454,7 +471,7 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
             }
             OsmMap(
                 dots = when (mode) {
-                    MapMode.STATIONS -> osmDots + ocidDots + dots + liveDots
+                    MapMode.STATIONS -> osmDots + ocidDots + dots + fishDots + liveDots
                     MapMode.TRACKING -> taDots
                     MapMode.COVERAGE -> emptyList()
                 },
@@ -677,6 +694,8 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 }
 
 private val OcidPurple = Color(0xFF7B3FB0)
+/** Fischchen für verdächtige Stationen */
+private val FishColor = Color(0xFFE8590C)
 private val LiveServingColor = Color(0xFF1E9E3A)
 // Issue #14: Das alte Hellgrün (0xFF9EE29A) war auf der hellen OSM-Karte kaum zu sehen.
 // Jetzt etwas dunkler, aber weiter heller als die verbundene Zelle (0xFF1E9E3A).
