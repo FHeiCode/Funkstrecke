@@ -87,16 +87,21 @@ data class BaseStation(
     val osmOtherSiteDistanceM: Double? = null,
     /** OSM-Masten rund um die Schätzung wurden schon geladen */
     val osmChecked: Boolean = false,
+    /** Einstellung „Nur eindeutige OSM-Masten bestätigen“ (siehe SettingsStore.strictOsm) */
+    val osmStrict: Boolean = true,
 ) {
     /** Ein OSM-Mast liegt nah an der Schätzung (≤ 100 m), egal ob eindeutig */
     val osmMastNear: Boolean get() = osmMastDistanceM != null && osmMastDistanceM <= OsmMasts.CONFIRM_M
 
     /**
-     * Der OSM-Mast bestätigt die Schätzung: höchstens 100 m entfernt und eindeutig, d. h. kein anderer
-     * Maststandort näher als [OsmMasts.AMBIGUOUS_M] an der Schätzung.
+     * Der OSM-Mast ist eindeutig: höchstens 100 m entfernt und kein anderer Maststandort näher als
+     * [OsmMasts.AMBIGUOUS_M] an der Schätzung. Gilt fürs Lernen immer, unabhängig von der Einstellung.
      */
-    val osmConfirmed: Boolean
+    val osmUnambiguous: Boolean
         get() = osmMastNear && (osmOtherSiteDistanceM == null || osmOtherSiteDistanceM >= OsmMasts.AMBIGUOUS_M)
+
+    /** Der OSM-Mast bestätigt die Schätzung (für die Bewertung): je nach Einstellung eindeutig oder nur nah. */
+    val osmConfirmed: Boolean get() = if (osmStrict) osmUnambiguous else osmMastNear
 
     /** Als Prüfstein für das Lernen geeignet: Mast ≤ 300 m, nächster anderer Standort ≥ [OsmMasts.CHECK_ISOLATION_M] */
     val osmIsolated: Boolean

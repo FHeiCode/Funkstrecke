@@ -198,14 +198,17 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     val stations: StateFlow<List<BaseStation>> = combine(
-        dao.observeCells(),
-        dao.observeEstimates(),
-        dao.observeCentroids(),
-        dao.observeOcid(),
-        osmIndex,
-    ) { cells, estimates, centroids, ocid, osm ->
-        buildStations(cells, estimates, centroids, ocid, osm)
-    }
+        combine(
+            dao.observeCells(),
+            dao.observeEstimates(),
+            dao.observeCentroids(),
+            dao.observeOcid(),
+            osmIndex,
+        ) { cells, estimates, centroids, ocid, osm ->
+            buildStations(cells, estimates, centroids, ocid, osm)
+        },
+        SettingsStore.strictOsm,
+    ) { list, strict -> if (strict) list else list.map { it.copy(osmStrict = false) } }
         .conflate()
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

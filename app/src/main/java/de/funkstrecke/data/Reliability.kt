@@ -61,7 +61,14 @@ fun assessCell(station: BaseStation, cell: CellEntity): Assessment {
             Assessment(Reliability.RELIABLE, tr("OpenCelliD bestätigt (${m(ocidDistance)} Abstand)", "confirmed by OpenCelliD (${m(ocidDistance)} apart)"))
         // Nur ein eindeutiger Mast bestätigt: In der Stadt liegt fast immer zufällig einer in der Nähe.
         e != null && station.osmConfirmed ->
-            Assessment(Reliability.RELIABLE, tr("OSM-Mast ${m(station.osmMastDistanceM!!)} entfernt, eindeutig", "OSM mast ${m(station.osmMastDistanceM!!)} away, unambiguous"))
+            Assessment(
+                Reliability.RELIABLE,
+                if (station.osmUnambiguous) {
+                    tr("OSM-Mast ${m(station.osmMastDistanceM!!)} entfernt, eindeutig", "OSM mast ${m(station.osmMastDistanceM!!)} away, unambiguous")
+                } else {
+                    tr("OSM-Mast ${m(station.osmMastDistanceM!!)} entfernt", "OSM mast ${m(station.osmMastDistanceM!!)} away")
+                },
+            )
         e != null && e.radiusM < CANDIDATE_RADIUS_M ->
             Assessment(Reliability.CANDIDATE, tr("Standort auf ±${m(e.radiusM)} geschätzt", "location estimated to ±${m(e.radiusM)}"))
         e != null ->

@@ -201,6 +201,29 @@ fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> U
                 BehaviorChoices(dataBehavior, { it.dataDescription }, SettingsStore::setDataBehavior)
             }
 
+            Section(tr("Bewertung", "Rating")) {
+                val strict by SettingsStore.strictOsm.collectAsStateWithLifecycle()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Nur eindeutige OSM-Masten bestätigen", "Only unambiguous OSM masts confirm"), style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            tr(
+                                "An: Ein OSM-Mast höchstens 100 m neben der Schätzung macht eine Station nur zuverlässig, wenn kein anderer " +
+                                    "Maststandort näher als 300 m liegt. In der Stadt steht alle 150–200 m ein Mast, die Nähe ist dort oft Zufall. " +
+                                    "Aus: wie bis Version 2.24 genügt jeder Mast in 100 m. Das Lernen nutzt immer nur eindeutige Masten.",
+                                "On: an OSM mast within 100 m of the estimate makes a station reliable only if no other mast site is " +
+                                    "closer than 300 m. In cities there is a mast every 150–200 m, so proximity is often coincidence. " +
+                                    "Off: as up to version 2.24, any mast within 100 m is enough. Learning always uses unambiguous masts only.",
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(checked = strict, onCheckedChange = { SettingsStore.setStrictOsm(it) })
+                }
+            }
+
             Section(tr("Lernen", "Learning")) {
                 LearningSettings(vm)
             }

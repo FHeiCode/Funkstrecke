@@ -580,6 +580,10 @@ private fun OsmSection(station: BaseStation, vm: ScannerViewModel) {
                 mast != null && d != null -> tr("Nächster Funkmast: ${formatDistance(d)} entfernt", "Nearest radio mast: ${formatDistance(d)} away") +
                     "\n" + mast.description + (mast.name?.let { " · $it" } ?: "") +
                     when {
+                        station.osmConfirmed && !station.osmUnambiguous -> tr(
+                            "\nBestätigt die Schätzung (≤ 100 m). Achtung: Der nächste andere Maststandort liegt nur ${formatDistance(station.osmOtherSiteDistanceM ?: 0.0)} von der Schätzung entfernt; die Nähe kann Zufall sein.",
+                            "\nConfirms the estimate (≤ 100 m). Note: the next other mast site is only ${formatDistance(station.osmOtherSiteDistanceM ?: 0.0)} from the estimate; the proximity may be coincidence.",
+                        )
                         station.osmConfirmed -> tr("\nBestätigt die Schätzung (≤ 100 m, kein anderer Maststandort im Umkreis von 300 m).", "\nConfirms the estimate (≤ 100 m, no other mast site within 300 m).")
                         station.osmMastNear -> tr(
                             "\nNur ein Hinweis, keine Bestätigung: Der nächste andere Maststandort liegt ${formatDistance(station.osmOtherSiteDistanceM ?: 0.0)} von der Schätzung entfernt. Bei so dichten Masten kann die Nähe Zufall sein.",

@@ -44,7 +44,7 @@ object SignalLearning {
         val mast = s.osmMast
         val d = s.osmMastDistanceM
         when {
-            mast != null && d != null && s.osmConfirmed -> Reference(s.key, s.rat, mast.latitude, mast.longitude, true)
+            mast != null && d != null && s.osmUnambiguous -> Reference(s.key, s.rat, mast.latitude, mast.longitude, true)
             e.radiusM <= OWN_TRUTH_RADIUS_M && e.method.startsWith("Multilateration") && !e.method.contains("mehrdeutig") ->
                 Reference(s.key, s.rat, e.latitude, e.longitude, false)
             else -> null
