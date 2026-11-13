@@ -111,42 +111,72 @@ data class ModelCheck(
     }
 }
 
-/** Gelerntes Signalmodell: gespeichert, ein-/ausschaltbar und nur aktiv, wenn die Prüfung bestanden ist. */
+/**
+ * Gelerntes Signalmodell: gespeichert, ein-/ausschaltbar. Die beiden Teile – Timing-Advance-Korrektur und
+ * Pegelmodell je Band – werden getrennt geprüft und nur verwendet, wenn ihre Prüfung bestanden ist.
+ */
 object SignalModelStore {
     private const val PREFS = "signal_model"
     private const val KEY_MODEL = "model"
     private const val KEY_ENABLED = "enabled"
-    private const val KEY_CHECK = "check"
+    private const val KEY_CHECK_TA = "check_ta"
+    private const val KEY_CHECK_BANDS = "check_bands"
 
-    data class State(val enabled: Boolean, val learned: SignalModel?, val check: ModelCheck?) {
-        /** Das gelernte Modell wird nur verwendet, wenn es eingeschaltet und geprüft besser ist. */
-        val applied: Boolean get() = enabled && learned != null && !learned.isDefault && check?.passed == true
-        val active: SignalModel get() = if (applied) learned!! else SignalModel.DEFAULT
+    data class State(val enabled: Boolean, val learned: SignalModel?, val taCheck: ModelCheck?, val bandCheck: ModelCheck?) {
+        val taApplied: Boolean get() = enabled && learned?.ta?.isNotEmpty() == true && taCheck?.passed == true
+        val bandsApplied: Boolean get() = enabled && learned?.bands?.isNotEmpty() == true && bandCheck?.passed == true
+        val applied: Boolean get() = taApplied || bandsApplied
+
+        /** Nur die geprüften Teile des gelernten Modells, sonst die Vorgabe */
+        val active: SignalModel
+            get() = if (!applied) {
+                SignalModel.DEFAULT
+            } else {
+                SignalModel(
+                    bands = if (bandsApplied) learned!!.bands else emptyMap(),
+                    ta = if (taApplied) learned!!.ta else emptyMap(),
+                    learnedAt = learned!!.learnedAt,
+                    references = learned.references,
+                )
+            }
     }
 
     private var context: Context? = null
-    private val _state = MutableStateFlow(State(true, null, null))
+    private val _state = MutableStateFlow(State(true, null, null, null))
     val state: StateFlow<State> = _state.asStateFlow()
 
     val active: SignalModel get() = _state.value.active
+
+    private fun readCheck(text: String?): ModelCheck? = text?.let {
+        runCatching {
+            val j = JSONObject(it)
+            ModelCheck(
+                j.getInt("n"),
+                if (j.has("d")) j.getDouble("d") else null,
+                if (j.has("l")) j.getDouble("l") else null,
+                j.optInt("better"),
+                j.optInt("worse"),
+            )
+        }.getOrNull()
+    }
+
+    private fun writeCheck(check: ModelCheck): String {
+        val c = JSONObject().put("n", check.stations).put("better", check.improved).put("worse", check.worse)
+        check.medianDefaultM?.let { c.put("d", it) }
+        check.medianLearnedM?.let { c.put("l", it) }
+        return c.toString()
+    }
 
     fun init(context: Context) {
         if (this.context != null) return
         this.context = context.applicationContext
         val p = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val check = p.getString(KEY_CHECK, null)?.let { text ->
-            runCatching {
-                val j = JSONObject(text)
-                ModelCheck(
-                    j.getInt("n"),
-                    if (j.has("d")) j.getDouble("d") else null,
-                    if (j.has("l")) j.getDouble("l") else null,
-                    j.optInt("better"),
-                    j.optInt("worse"),
-                )
-            }.getOrNull()
-        }
-        _state.value = State(p.getBoolean(KEY_ENABLED, true), p.getString(KEY_MODEL, null)?.let { SignalModel.fromJson(it) }, check)
+        _state.value = State(
+            p.getBoolean(KEY_ENABLED, true),
+            p.getString(KEY_MODEL, null)?.let { SignalModel.fromJson(it) },
+            readCheck(p.getString(KEY_CHECK_TA, null)),
+            readCheck(p.getString(KEY_CHECK_BANDS, null)),
+        )
     }
 
     fun setEnabled(value: Boolean) {
@@ -154,12 +184,12 @@ object SignalModelStore {
         _state.value = _state.value.copy(enabled = value)
     }
 
-    fun save(model: SignalModel, check: ModelCheck) {
-        val c = JSONObject().put("n", check.stations).put("better", check.improved).put("worse", check.worse)
-        check.medianDefaultM?.let { c.put("d", it) }
-        check.medianLearnedM?.let { c.put("l", it) }
+    fun save(model: SignalModel, taCheck: ModelCheck, bandCheck: ModelCheck) {
         context?.getSharedPreferences(PREFS, Context.MODE_PRIVATE)?.edit()
-            ?.putString(KEY_MODEL, model.toJson())?.putString(KEY_CHECK, c.toString())?.apply()
-        _state.value = _state.value.copy(learned = model, check = check)
+            ?.putString(KEY_MODEL, model.toJson())
+            ?.putString(KEY_CHECK_TA, writeCheck(taCheck))
+            ?.putString(KEY_CHECK_BANDS, writeCheck(bandCheck))
+            ?.apply()
+        _state.value = _state.value.copy(learned = model, taCheck = taCheck, bandCheck = bandCheck)
     }
 }
