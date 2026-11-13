@@ -86,6 +86,15 @@ object SettingsStore {
         prefs?.edit()?.putBoolean("strictOsm", value)?.apply()
     }
 
+    private val suspectMinState = MutableStateFlow(1)
+    /** So oft muss eine verdächtige Station neu gemessen werden, damit sie bleibt */
+    val suspectMinMeasurements: StateFlow<Int> = suspectMinState.asStateFlow()
+
+    fun setSuspectMinMeasurements(value: Int) {
+        suspectMinState.value = value.coerceIn(1, 50)
+        prefs?.edit()?.putInt("suspectMin", suspectMinState.value)?.apply()
+    }
+
     private val dataState = MutableStateFlow(CallBehavior.PASSIVE)
     val dataBehavior: StateFlow<CallBehavior> = dataState.asStateFlow()
 
@@ -113,6 +122,7 @@ object SettingsStore {
         callState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("callBehavior", null) } ?: CallBehavior.PAUSE
         dataState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("dataBehavior", null) } ?: CallBehavior.PASSIVE
         ocidKeyState.value = p.getString("openCellIdKey", "").orEmpty()
+        suspectMinState.value = p.getInt("suspectMin", 1)
         strictOsmState.value = p.getBoolean("strictOsm", true)
     }
 

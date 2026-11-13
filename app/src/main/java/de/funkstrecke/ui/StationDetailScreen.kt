@@ -38,7 +38,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -144,6 +146,7 @@ fun StationDetailScreen(vm: ScannerViewModel, stationKey: String, onBack: () -> 
                 Spacer(Modifier.width(8.dp))
                 Text(assessment.reason, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            SuspectBlock(station, vm)
 
             Section(tr("Kennung", "Identity")) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -696,6 +699,43 @@ private fun OcidSection(station: BaseStation, vm: ScannerViewModel) {
                     enabled = progress?.running != true,
                 ) { Text(if (station.ocid.isEmpty()) tr("Mit OpenCelliD abgleichen", "Compare with OpenCelliD") else tr("Erneut abgleichen", "Compare again")) }
             }
+        }
+    }
+}
+
+/** Station als verdächtig markieren oder die Markierung aufheben, mit Stand der Prüfung. */
+@Composable
+private fun SuspectBlock(station: BaseStation, vm: ScannerViewModel) {
+    val suspectGroups by vm.suspectGroups.collectAsStateWithLifecycle()
+    val minMeasurements by de.funkstrecke.util.SettingsStore.suspectMinMeasurements.collectAsStateWithLifecycle()
+    val marked = station.cells.any { it.groupKey in suspectGroups }
+    var status by remember { mutableStateOf<de.funkstrecke.data.Suspects.Status?>(null) }
+    LaunchedEffect(marked, station.samples) { status = if (marked) vm.suspectStatus(station) else null }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (marked) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                SuspectPill()
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    status?.let { tr("seit ${formatDateTime(it.markedAt)}", "since ${formatDateTime(it.markedAt)}") } ?: "",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Text(
+                tr(
+                    "Wird gelöscht, wenn du im Umkreis von 1 km wieder aufzeichnest (mindestens ${de.funkstrecke.data.Suspects.NEAR_MIN_SCANS} Scans) " +
+                        "und sie dabei weniger als $minMeasurements-mal neu gemessen wird. Wird sie oft genug gemessen, verschwindet die Markierung." +
+                        (status?.let { "\nBisher: ${it.newMeasurements} neue Messungen, ${it.scansNear} Scans in der Nähe." } ?: ""),
+                    "Will be deleted when you record within 1 km again (at least ${de.funkstrecke.data.Suspects.NEAR_MIN_SCANS} scans) " +
+                        "and it is measured fewer than $minMeasurements times. If it is measured often enough, the mark disappears." +
+                        (status?.let { "\nSo far: ${it.newMeasurements} new measurements, ${it.scansNear} scans nearby." } ?: ""),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedButton(onClick = { vm.unmarkSuspect(station) }) { Text(tr("Markierung aufheben", "Remove mark")) }
+        } else if (station.estimate != null) {
+            OutlinedButton(onClick = { vm.markSuspect(station) }) { Text(tr("Als verdächtig markieren", "Mark as suspect")) }
         }
     }
 }

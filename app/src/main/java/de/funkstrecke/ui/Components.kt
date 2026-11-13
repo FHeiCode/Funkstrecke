@@ -126,3 +126,20 @@ fun ReliabilityPill(r: de.funkstrecke.data.Reliability, modifier: Modifier = Mod
         )
     }
 }
+
+/** Kleine Plakette „verdächtig“ für markierte Stationen. */
+@Composable
+fun SuspectPill(modifier: Modifier = Modifier) {
+    androidx.compose.material3.Surface(
+        color = MaterialTheme.colorScheme.errorContainer,
+        contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(50),
+        modifier = modifier,
+    ) {
+        Text(
+            de.funkstrecke.util.tr("verdächtig", "suspect"),
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+        )
+    }
+}

@@ -22,6 +22,7 @@ import de.funkstrecke.data.buildStations
 import de.funkstrecke.data.distanceM
 import de.funkstrecke.locate.LocationEstimator
 import de.funkstrecke.data.SignalLearning
+import de.funkstrecke.data.Suspects
 import de.funkstrecke.locate.SignalModelStore
 import de.funkstrecke.locate.Terrain
 import de.funkstrecke.radio.CellScanner
@@ -137,6 +138,22 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         SignalModelStore.setEnabled(value)
         if (SignalModelStore.active != before) viewModelScope.launch { Recorder.recomputeAll(db) }
     }
+
+    /** Messgruppen, die als verdächtig markiert sind */
+    val suspectGroups: StateFlow<Set<String>> = db.suspectDao().observe().map { list -> list.map { it.groupKey }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    fun markSuspect(station: BaseStation) {
+        viewModelScope.launch { Suspects.mark(db, station) }
+    }
+
+    fun unmarkSuspect(station: BaseStation) {
+        viewModelScope.launch { Suspects.unmark(db, station) }
+    }
+
+    /** Stand einer markierten Station (neue Messungen, Scans in der Nähe), null wenn nicht markiert */
+    suspend fun suspectStatus(station: BaseStation): Suspects.Status? =
+        withContext(Dispatchers.IO) { Suspects.status(db, station.cells.map { it.groupKey }.distinct()) }
 
     /** Geländemodell ein- oder ausschalten; alle Schätzungen werden neu berechnet. */
     fun setTerrainEnabled(value: Boolean) {

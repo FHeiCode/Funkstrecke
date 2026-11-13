@@ -76,6 +76,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
     val ocidKey by SettingsStore.openCellIdKey.collectAsStateWithLifecycle()
     val ocidProgress by vm.ocidProgress.collectAsStateWithLifecycle()
     val osmProgress by vm.osmProgress.collectAsStateWithLifecycle()
+    val suspectGroups by vm.suspectGroups.collectAsStateWithLifecycle()
     var osmBulk by rememberSaveable { mutableStateOf(false) }
 
     val operators = remember(stations) { stations.map { it.operatorName ?: UNKNOWN_OPERATOR }.distinct().sorted() }
@@ -254,7 +255,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
                     )
                 }
             }
-            items(shown, key = { it.key }) { station -> StationRow(station) { onOpen(station.key) } }
+            items(shown, key = { it.key }) { station -> StationRow(station, suspect = station.cells.any { it.groupKey in suspectGroups }) { onOpen(station.key) } }
         }
     }
 
@@ -274,7 +275,7 @@ fun StationsScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun StationRow(station: BaseStation, onClick: () -> Unit) {
+private fun StationRow(station: BaseStation, suspect: Boolean, onClick: () -> Unit) {
     OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
             RatBadge(station.rat)
@@ -290,6 +291,10 @@ private fun StationRow(station: BaseStation, onClick: () -> Unit) {
                     )
                     Spacer(Modifier.width(8.dp))
                     ReliabilityPill(assessment.reliability)
+                    if (suspect) {
+                        Spacer(Modifier.width(6.dp))
+                        SuspectPill()
+                    }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     OperatorDot(station.operatorName)

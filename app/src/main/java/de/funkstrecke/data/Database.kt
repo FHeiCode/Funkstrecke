@@ -222,14 +222,15 @@ interface CellDao {
 @Database(
     entities = [
         CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class,
-        OsmMastEntity::class, OsmTileEntity::class,
+        OsmMastEntity::class, OsmTileEntity::class, SuspectEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun cellDao(): CellDao
     abstract fun osmDao(): OsmDao
+    abstract fun suspectDao(): SuspectDao
 
     companion object {
         @Volatile
@@ -247,6 +248,16 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DELETE FROM opencellid WHERE cellKey IN ($bad)")
                 db.execSQL("DELETE FROM estimates WHERE groupKey IN ($badGroups)")
                 db.execSQL("DELETE FROM cells WHERE cellId IN (268435455, 68719476735)")
+            }
+        }
+
+        /** 7 → 8: als verdächtig markierte Stationen. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `suspects` (`groupKey` TEXT NOT NULL, `stationKey` TEXT NOT NULL, " +
+                        "`markedAt` INTEGER NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, PRIMARY KEY(`groupKey`))",
+                )
             }
         }
 
@@ -305,7 +316,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "funkstrecke.db",
                 )
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()
