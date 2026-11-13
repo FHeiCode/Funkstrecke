@@ -74,6 +74,18 @@ object SettingsStore {
         prefs?.edit()?.putString("openCellIdKey", value.trim())?.apply()
     }
 
+    private val strictOsmState = MutableStateFlow(true)
+    /**
+     * true: Ein OSM-Mast bestätigt eine Station nur, wenn er eindeutig ist (kein anderer Maststandort im Umkreis
+     * von 300 m). false: wie bis Version 2.24 jeder Mast höchstens 100 m neben der Schätzung.
+     */
+    val strictOsm: StateFlow<Boolean> = strictOsmState.asStateFlow()
+
+    fun setStrictOsm(value: Boolean) {
+        strictOsmState.value = value
+        prefs?.edit()?.putBoolean("strictOsm", value)?.apply()
+    }
+
     private val dataState = MutableStateFlow(CallBehavior.PASSIVE)
     val dataBehavior: StateFlow<CallBehavior> = dataState.asStateFlow()
 
@@ -101,6 +113,7 @@ object SettingsStore {
         callState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("callBehavior", null) } ?: CallBehavior.PAUSE
         dataState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("dataBehavior", null) } ?: CallBehavior.PASSIVE
         ocidKeyState.value = p.getString("openCellIdKey", "").orEmpty()
+        strictOsmState.value = p.getBoolean("strictOsm", true)
     }
 
     fun update(transform: (ScanSettings) -> ScanSettings) {

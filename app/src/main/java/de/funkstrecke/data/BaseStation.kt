@@ -83,9 +83,31 @@ data class BaseStation(
     /** Nächster OSM-Funkmast (höchstens 1 km von der Schätzung) */
     val osmMast: OsmMastEntity? = null,
     val osmMastDistanceM: Double? = null,
+    /** Abstand der Schätzung zum nächsten anderen Maststandort in OSM (null = keiner im Umkreis von 1 km) */
+    val osmOtherSiteDistanceM: Double? = null,
     /** OSM-Masten rund um die Schätzung wurden schon geladen */
     val osmChecked: Boolean = false,
+    /** Einstellung „Nur eindeutige OSM-Masten bestätigen“ (siehe SettingsStore.strictOsm) */
+    val osmStrict: Boolean = true,
 ) {
+    /** Ein OSM-Mast liegt nah an der Schätzung (≤ 100 m), egal ob eindeutig */
+    val osmMastNear: Boolean get() = osmMastDistanceM != null && osmMastDistanceM <= OsmMasts.CONFIRM_M
+
+    /**
+     * Der OSM-Mast ist eindeutig: höchstens 100 m entfernt und kein anderer Maststandort näher als
+     * [OsmMasts.AMBIGUOUS_M] an der Schätzung. Gilt fürs Lernen immer, unabhängig von der Einstellung.
+     */
+    val osmUnambiguous: Boolean
+        get() = osmMastNear && (osmOtherSiteDistanceM == null || osmOtherSiteDistanceM >= OsmMasts.AMBIGUOUS_M)
+
+    /** Der OSM-Mast bestätigt die Schätzung (für die Bewertung): je nach Einstellung eindeutig oder nur nah. */
+    val osmConfirmed: Boolean get() = if (osmStrict) osmUnambiguous else osmMastNear
+
+    /** Als Prüfstein für das Lernen geeignet: Mast ≤ 300 m, nächster anderer Standort ≥ [OsmMasts.CHECK_ISOLATION_M] */
+    val osmIsolated: Boolean
+        get() = osmMastDistanceM != null && osmMastDistanceM <= 300.0 &&
+            (osmOtherSiteDistanceM == null || osmOtherSiteDistanceM >= OsmMasts.CHECK_ISOLATION_M)
+
     /** Bewertung: zuverlässig, Kandidat oder mögliches Artefakt (beste Zelle zählt) */
     val assessment: Assessment get() = assessStation(this)
 
@@ -238,7 +260,12 @@ fun buildStations(
         val e = s.estimate
         if (e != null) {
             val near = osm.nearest(e.latitude, e.longitude)
-            out = out.copy(osmMast = near?.first, osmMastDistanceM = near?.second, osmChecked = osm.covered(e.latitude, e.longitude))
+            out = out.copy(
+                osmMast = near?.first,
+                osmMastDistanceM = near?.second,
+                osmOtherSiteDistanceM = near?.let { osm.otherSiteDistance(e.latitude, e.longitude, it.first) },
+                osmChecked = osm.covered(e.latitude, e.longitude),
+            )
         }
         out
     }

@@ -106,6 +106,12 @@ object OsmMasts {
     private const val TILE_LON = 0.075
     /** Ein Mast so nah an der Schätzung bestätigt die Station */
     const val CONFIRM_M = 100.0
+    /** Masten, die höchstens so weit vom nächsten Mast entfernt sind, gelten als derselbe Standort (z. B. mehrere Antennen auf einem Dach) */
+    const val SAME_SITE_M = 50.0
+    /** Liegt ein anderer Maststandort näher als dies an der Schätzung, ist die Bestätigung nicht eindeutig */
+    const val AMBIGUOUS_M = 300.0
+    /** Für die Prüfung des Lernens muss der nächste andere Standort mindestens so weit weg sein */
+    const val CHECK_ISOLATION_M = 600.0
     /** Bis zu diesem Abstand wird der nächste Mast angezeigt */
     const val SEARCH_M = 1_000.0
     /** Höchstens so viele Kacheln für einen Kartenausschnitt (sonst zu weit herausgezoomt) */
@@ -262,6 +268,16 @@ class OsmIndex(masts: List<OsmMastEntity>, val freshTiles: Set<String>) {
             .map { it to distanceM(lat, lon, it.latitude, it.longitude) }
             .filter { it.second <= OsmMasts.SEARCH_M }
             .minByOrNull { it.second }
+
+    /**
+     * Abstand von der Position zum nächsten *anderen* Maststandort: zum nächsten Mast, der mehr als
+     * [OsmMasts.SAME_SITE_M] von [nearest] entfernt ist. Null, wenn es im Suchradius keinen gibt.
+     * In der Stadt steht alle 150–200 m ein Mast; ein Mast nahe der Schätzung ist dann kein Beleg.
+     */
+    fun otherSiteDistance(lat: Double, lon: Double, nearest: OsmMastEntity): Double? =
+        within(lat, lon, OsmMasts.SEARCH_M)
+            .filter { distanceM(nearest.latitude, nearest.longitude, it.latitude, it.longitude) > OsmMasts.SAME_SITE_M }
+            .minOfOrNull { distanceM(lat, lon, it.latitude, it.longitude) }
 
     fun within(lat: Double, lon: Double, radiusM: Double): List<OsmMastEntity> =
         OsmMasts.tilesAround(lat, lon, radiusM)

@@ -1,6 +1,7 @@
-Lernen: Timing Advance und Pegelabfall getrennt
+OSM-Masten: nur eindeutige bestätigen
 
-- Das Gelernte besteht jetzt aus zwei Teilen, die einzeln geprüft und einzeln verwendet werden: Timing Advance und Pegelabfall je Band.
-- Timing Advance darf genauer gelernt werden als bisher (bis ±30 m statt mindestens ±60 m).
-- Der Pegelabfall wird nur noch aus Zellen gelernt, die auch als Nachbarzelle gemessen wurden. Vorher kam ein zu flacher Abfall heraus.
-- Einstellungen → Lernen zeigt für beide Teile Stand, Werte und Prüfergebnis.
+- Ein OSM-Mast bestätigt eine Station nur noch, wenn er höchstens 100 m von der Schätzung entfernt ist und kein anderer Maststandort näher als 300 m liegt. In der Stadt war die Nähe zu einem Mast oft Zufall.
+- Bei dichten Masten zeigt die Stationsansicht den Mast nur als Hinweis.
+- Die Zahl der zuverlässigen Stationen kann deshalb sinken.
+- Einstellungen → Bewertung: Der Schalter „Nur eindeutige OSM-Masten bestätigen“ stellt bei Bedarf die alte Regel wieder her.
+- Lernen und „Wirkung prüfen“ nutzen nur noch eindeutige Masten als Prüfstein.

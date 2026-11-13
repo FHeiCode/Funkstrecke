@@ -201,6 +201,29 @@ fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> U
                 BehaviorChoices(dataBehavior, { it.dataDescription }, SettingsStore::setDataBehavior)
             }
 
+            Section(tr("Bewertung", "Rating")) {
+                val strict by SettingsStore.strictOsm.collectAsStateWithLifecycle()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Nur eindeutige OSM-Masten bestätigen", "Only unambiguous OSM masts confirm"), style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            tr(
+                                "An: Ein OSM-Mast höchstens 100 m neben der Schätzung macht eine Station nur zuverlässig, wenn kein anderer " +
+                                    "Maststandort näher als 300 m liegt. In der Stadt steht alle 150–200 m ein Mast, die Nähe ist dort oft Zufall. " +
+                                    "Aus: wie bis Version 2.24 genügt jeder Mast in 100 m. Das Lernen nutzt immer nur eindeutige Masten.",
+                                "On: an OSM mast within 100 m of the estimate makes a station reliable only if no other mast site is " +
+                                    "closer than 300 m. In cities there is a mast every 150–200 m, so proximity is often coincidence. " +
+                                    "Off: as up to version 2.24, any mast within 100 m is enough. Learning always uses unambiguous masts only.",
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(checked = strict, onCheckedChange = { SettingsStore.setStrictOsm(it) })
+                }
+            }
+
             Section(tr("Lernen", "Learning")) {
                 LearningSettings(vm)
             }
@@ -348,10 +371,10 @@ private fun TerrainSettings(vm: ScannerViewModel) {
         )
         Text(
             tr(
-                "Wirkung prüfen: An Stationen mit einem OSM-Mast höchstens 500 m neben der Schätzung wird mit und ohne Gelände gerechnet " +
-                    "und der Abstand zum Mast verglichen.",
-                "Check effect: at stations with an OSM mast within 500 m of the estimate, the location is computed with and without terrain " +
-                    "and the distance to the mast compared.",
+                "Wirkung prüfen: An Stationen mit einem eindeutigen OSM-Mast (höchstens 300 m neben der Schätzung, nächster andere " +
+                    "Maststandort mindestens 600 m entfernt) wird mit und ohne Gelände gerechnet und der Abstand zum Mast verglichen.",
+                "Check effect: at stations with an unambiguous OSM mast (at most 300 m from the estimate, next other mast site " +
+                    "at least 600 m away) the location is computed with and without terrain and the distance to the mast compared.",
             ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -390,13 +413,16 @@ private fun TerrainSettings(vm: ScannerViewModel) {
 private fun CheckLine(check: ModelCheck?) {
     Text(
         if (check == null || check.medianDefaultM == null || check.medianLearnedM == null) {
-            tr("Prüfung: keine Station mit OSM-Mast zum Vergleichen.", "Check: no station with an OSM mast to compare.")
+            tr(
+                "Prüfung: noch keine Station mit eindeutigem OSM-Mast (höchstens 300 m entfernt, nächster andere Maststandort mindestens 600 m weg).",
+                "Check: no station with an unambiguous OSM mast yet (at most 300 m away, next other mast site at least 600 m away).",
+            )
         } else {
             tr(
-                "Prüfung an ${check.stations} Stationen mit OSM-Mast (mindestens ${ModelCheck.MIN_STATIONS} nötig): Median-Abstand zum Mast " +
+                "Prüfung an ${check.stations} Stationen mit eindeutigem OSM-Mast (mindestens ${ModelCheck.MIN_STATIONS} nötig): Median-Abstand zum Mast " +
                     "mit Vorgabe ${formatDistance(check.medianDefaultM)}, gelernt ${formatDistance(check.medianLearnedM)} · " +
                     "${check.improved} näher, ${check.worse} weiter weg",
-                "Check at ${check.stations} stations with an OSM mast (at least ${ModelCheck.MIN_STATIONS} needed): median distance to the mast " +
+                "Check at ${check.stations} stations with an unambiguous OSM mast (at least ${ModelCheck.MIN_STATIONS} needed): median distance to the mast " +
                     "with default ${formatDistance(check.medianDefaultM)}, learned ${formatDistance(check.medianLearnedM)} · " +
                     "${check.improved} closer, ${check.worse} farther",
             )
@@ -423,13 +449,13 @@ private fun LearningSettings(vm: ScannerViewModel) {
                 Text(tr("Aus bekannten Stationen lernen", "Learn from known stations"), style = MaterialTheme.typography.titleSmall)
                 Text(
                     tr(
-                        "An Stationen mit gut bekanntem Standort (OSM-Mast oder enge eigene Schätzung) lernt die App zwei Dinge: " +
+                        "An Stationen mit gut bekanntem Standort (eindeutiger OSM-Mast oder enge eigene Schätzung) lernt die App zwei Dinge: " +
                             "wie genau der Timing-Advance-Abstand deines Handys ist, und wie schnell der Pegel je Band mit dem Abstand fällt. " +
-                            "Jeder Teil wird für sich an Stationen mit OSM-Mast geprüft und nur verwendet, wenn er nicht schlechter " +
+                            "Jeder Teil wird für sich an Stationen mit eindeutigem OSM-Mast geprüft und nur verwendet, wenn er nicht schlechter " +
                             "abschneidet als die feste Vorgabe. Gelernt wird höchstens einmal am Tag.",
-                        "At stations with a well-known location (OSM mast or tight own estimate) the app learns two things: " +
+                        "At stations with a well-known location (unambiguous OSM mast or tight own estimate) the app learns two things: " +
                             "how precise your phone's timing-advance distance is, and how fast the level drops with distance per band. " +
-                            "Each part is checked separately at stations with an OSM mast and only used if it does no worse " +
+                            "Each part is checked separately at stations with an unambiguous OSM mast and only used if it does no worse " +
                             "than the fixed default. Learning runs at most once a day.",
                     ),
                     style = MaterialTheme.typography.bodySmall,
