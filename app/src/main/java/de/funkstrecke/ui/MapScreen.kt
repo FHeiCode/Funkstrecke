@@ -678,7 +678,9 @@ fun MapScreen(vm: ScannerViewModel, onOpen: (String) -> Unit) {
 
 private val OcidPurple = Color(0xFF7B3FB0)
 private val LiveServingColor = Color(0xFF1E9E3A)
-private val LiveNeighbourColor = Color(0xFF9EE29A)
+// Issue #14: Das alte Hellgrün (0xFF9EE29A) war auf der hellen OSM-Karte kaum zu sehen.
+// Jetzt etwas dunkler, aber weiter heller als die verbundene Zelle (0xFF1E9E3A).
+private val LiveNeighbourColor = Color(0xFF58BD5E)
 private const val LIVE_MAX_AGE_MS = 120_000L
 
 /** Deckkraft für Stationen ohne Cell-ID (lose Nachbarzellen, PCI-Gruppen) */
