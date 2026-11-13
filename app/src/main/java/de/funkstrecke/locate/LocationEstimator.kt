@@ -30,6 +30,9 @@ import kotlin.math.sqrt
  * Messungen sind viel leiser, als das Modell erwartet; sie bekommen eine große Unsicherheit und
  * ziehen die Schätzung nicht mehr nach außen. Das wird zweimal wiederholt, weil sich mit dem Mast
  * auch die Abschattung verschiebt.
+ *
+ * Exponent, P0-Vorgabe und Streuung kommen je Band aus dem [SignalModel]; ohne gelerntes Modell gilt
+ * die feste Vorgabe. Der Timing-Advance-Abstand wird um den gelernten Versatz des Geräts korrigiert.
  */
 object LocationEstimator {
 
@@ -42,12 +45,6 @@ object LocationEstimator {
         val measurements: Int,
     )
 
-    private const val PATH_LOSS_EXPONENT = 3.0
-    private const val SIGMA_DB = 6.0
-    private const val P0_PRIOR = -5.0
-    private const val P0_PRIOR_SIGMA = 10.0
-    private const val SIGMA_TA_LTE = 80.0
-    private const val SIGMA_TA_GSM = 550.0
     private const val MIN_DISTANCE = 15.0
     private const val BIN_SIZE = 20.0
     /**
@@ -58,8 +55,6 @@ object LocationEstimator {
     const val MAX_GPS_ERROR = 100f
     /** Für Punkte ohne Genauigkeitsangabe angenommen */
     private const val DEFAULT_ACCURACY_M = 30.0
-    /** dB pro relativem Abstandsfehler: 10 · n / ln 10 */
-    private const val DB_PER_RELATIVE_DISTANCE = 10 * 3.0 / 2.302585
     private const val MIN_RADIUS = 50.0
     /** Zuschlag für Modellfehler (Gebäude, Antennendiagramm) */
     private const val RADIUS_FACTOR = 1.5
@@ -97,8 +92,16 @@ object LocationEstimator {
     /**
      * @param elevation Geländehöhe in m für eine Position, null wenn unbekannt; ohne Funktion oder
      *   bei fehlenden Höhen wird ohne Gelände gerechnet.
+     * @param model Signalmodell (Vorgabe oder gelernt)
+     * @param bandOf Band je Zellkennung, für die Wahl des Bandmodells
      */
-    fun estimate(rat: String, measurements: List<MeasurementEntity>, elevation: ((Double, Double) -> Double?)? = null): Result? {
+    fun estimate(
+        rat: String,
+        measurements: List<MeasurementEntity>,
+        elevation: ((Double, Double) -> Double?)? = null,
+        model: SignalModel = SignalModel.DEFAULT,
+        bandOf: Map<String, String?> = emptyMap(),
+    ): Result? {
         val usable = measurements.filter { it.dbm != null && (it.accuracyM ?: Float.MAX_VALUE) <= MAX_GPS_ERROR }
         if (usable.isEmpty()) return null
 
@@ -112,6 +115,9 @@ object LocationEstimator {
 
         // Auf 20-m-Raster pro Zelle zusammenfassen, damit langes Stehen an einem Ort nicht dominiert.
         val cellIndex = usable.map { it.cellKey }.distinct().withIndex().associate { (i, k) -> k to i }
+        val params = Array(cellIndex.size) { SignalModel.DEFAULT_BAND }
+        cellIndex.forEach { (k, i) -> params[i] = model.band(rat, bandOf[k]) }
+        val taModel = model.ta(rat)
         val obs = usable
             .groupBy { Triple(it.cellKey, floor(toX(it.longitude) / BIN_SIZE), floor(toY(it.latitude) / BIN_SIZE)) }
             .map { (k, list) ->
@@ -121,7 +127,7 @@ object LocationEstimator {
                     y = list.map { toY(it.latitude) }.average(),
                     cell = cellIndex.getValue(k.first),
                     rss = list.map { it.dbm!!.toDouble() }.average(),
-                    taDistance = if (tas.isEmpty()) null else timingDistance(rat, tas[tas.size / 2]),
+                    taDistance = if (tas.isEmpty()) null else timingDistance(rat, tas[tas.size / 2])?.let { max(0.0, it + taModel.offsetM) },
                     accuracy = list.map { it.accuracyM?.toDouble() ?: DEFAULT_ACCURACY_M }.average(),
                 )
             }
@@ -146,8 +152,7 @@ object LocationEstimator {
         val fallback = result(cx, cy, max(300.0, spread * 1.5), "Schwerpunkt (grob)")
         if (spots < 4 || spread < 60.0) return fallback
 
-        val taSigma = if (rat == "2G") SIGMA_TA_GSM else SIGMA_TA_LTE
-        val problem = Problem(obs, cellIndex.size, taSigma)
+        val problem = Problem(obs, params, taModel.sigmaM)
 
         // Startpunkte: Schwerpunkt, beidseits quer zur Hauptachse der Messorte, Spiegelpunkt.
         val mx = obs.map { it.x }.average()
@@ -201,7 +206,8 @@ object LocationEstimator {
         val similar = solutions.filter { it.cost <= best.cost + AMBIGUITY_CHI2 }
         val farthest = similar.maxOf { hypot(it.x - best.x, it.y - best.y) }
         val usesTa = obs.any { it.taDistance != null }
-        val method = (if (usesTa) "Multilateration (Pegel + TA)" else "Multilateration (Pegel)") + terrainNote
+        val learnedNote = if (params.any { it.cells > 0 } || (usesTa && taModel.samples > 0)) ", gelerntes Modell" else ""
+        val method = (if (usesTa) "Multilateration (Pegel + TA)" else "Multilateration (Pegel)") + terrainNote + learnedNote
 
         if (farthest <= best.radius) {
             if (best.radius > 20_000) return fallback
@@ -244,7 +250,8 @@ object LocationEstimator {
     }
 
     /** Nichtlineares Ausgleichsproblem: Parameter x, y, P0 je Zelle. */
-    private class Problem(val obs: List<Obs>, val cells: Int, val taSigma: Double) {
+    private class Problem(val obs: List<Obs>, val params: Array<BandModel>, val taSigma: Double) {
+        private val cells = params.size
         private val taObs = obs.filter { it.taDistance != null }
         private val nPar = 2 + cells
         private val nRes = obs.size + taObs.size + cells
@@ -256,14 +263,16 @@ object LocationEstimator {
                 val dx = q[0] - o.x
                 val dy = q[1] - o.y
                 val d = max(hypot(dx, dy), MIN_DISTANCE)
-                val predicted = q[2 + o.cell] - 10 * PATH_LOSS_EXPONENT * log10(d)
-                // Positionsfehler als zusätzlicher Pegelfehler: nah am Mast groß, weit weg klein.
-                val positionDb = DB_PER_RELATIVE_DISTANCE * o.accuracy / d
-                val sigma = sqrt(SIGMA_DB * SIGMA_DB + positionDb * positionDb + o.extraSigmaDb * o.extraSigmaDb)
+                val band = params[o.cell]
+                val predicted = q[2 + o.cell] - 10 * band.exponent * log10(d)
+                // Positionsfehler als zusätzlicher Pegelfehler (10 · n / ln 10 dB je relativem Abstandsfehler):
+                // nah am Mast groß, weit weg klein.
+                val positionDb = 10 * band.exponent / ln(10.0) * o.accuracy / d
+                val sigma = sqrt(band.sigmaDb * band.sigmaDb + positionDb * positionDb + o.extraSigmaDb * o.extraSigmaDb)
                 r[i] = (o.rss - predicted) / sigma
                 if (jac != null) {
                     jac[i].fill(0.0)
-                    val g = 10 * PATH_LOSS_EXPONENT / (ln(10.0) * d * d * sigma)
+                    val g = 10 * band.exponent / (ln(10.0) * d * d * sigma)
                     jac[i][0] = g * dx
                     jac[i][1] = g * dy
                     jac[i][2 + o.cell] = -1.0 / sigma
@@ -284,10 +293,10 @@ object LocationEstimator {
                 i++
             }
             for (c in 0 until cells) {
-                r[i] = (q[2 + c] - P0_PRIOR) / P0_PRIOR_SIGMA
+                r[i] = (q[2 + c] - params[c].p0) / params[c].p0Sigma
                 if (jac != null) {
                     jac[i].fill(0.0)
-                    jac[i][2 + c] = 1.0 / P0_PRIOR_SIGMA
+                    jac[i][2 + c] = 1.0 / params[c].p0Sigma
                 }
                 i++
             }
@@ -312,8 +321,8 @@ object LocationEstimator {
             p[1] = startY
             for (c in 0 until cells) {
                 val own = obs.filter { it.cell == c }
-                p[2 + c] = if (own.isEmpty()) P0_PRIOR else own.map {
-                    it.rss + 10 * PATH_LOSS_EXPONENT * log10(max(hypot(it.x - startX, it.y - startY), MIN_DISTANCE))
+                p[2 + c] = if (own.isEmpty()) params[c].p0 else own.map {
+                    it.rss + 10 * params[c].exponent * log10(max(hypot(it.x - startX, it.y - startY), MIN_DISTANCE))
                 }.average()
             }
             val jac = Array(nRes) { DoubleArray(nPar) }
@@ -409,4 +418,6 @@ fun localizeMethod(method: String): String =
             .replace("(Pegel)", "(signal)")
             .replace("mehrdeutig – aus anderer Richtung messen", "ambiguous – measure from another direction")
             .replace(Regex("Gelände: (\\d+)/(\\d+) abgeschattet"), "terrain: $1/$2 shadowed")
+            .replace("gelerntes Modell", "learned model")
+            .replace(Regex("\\+(\\d+) Nachbarmessungen"), "+$1 neighbour measurements")
     }
