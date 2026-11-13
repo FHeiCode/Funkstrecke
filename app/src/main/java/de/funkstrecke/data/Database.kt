@@ -101,6 +101,13 @@ interface CellDao {
     @Query("SELECT * FROM cells")
     suspend fun allCells(): List<CellEntity>
 
+    @Query("SELECT * FROM cells WHERE groupKey = :groupKey")
+    suspend fun cellsOfGroup(groupKey: String): List<CellEntity>
+
+    /** Stationen, die eine Zelle mit dieser Technik, diesem Träger und dieser PCI mit Cell-ID kennen */
+    @Query("SELECT DISTINCT groupKey FROM cells WHERE rat = :rat AND arfcn = :arfcn AND pci = :pci AND cellId IS NOT NULL")
+    suspend fun groupsWithCell(rat: String, arfcn: Int, pci: Int): List<String>
+
     @Upsert
     suspend fun upsertCell(cell: CellEntity)
 

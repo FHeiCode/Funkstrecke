@@ -3,6 +3,7 @@ package de.funkstrecke.data
 import android.location.Location
 import androidx.room.withTransaction
 import de.funkstrecke.locate.LocationEstimator
+import de.funkstrecke.locate.SignalModelStore
 import de.funkstrecke.locate.Terrain
 import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.radio.EndcMode
@@ -135,6 +136,11 @@ object Recorder {
                         ),
                     )
                     touched[group] = c.rat
+                    // Nachbarzelle ohne Cell-ID: Ihre Messung zählt auch für die Station, die genau diese Zelle
+                    // (Träger + PCI) mit Cell-ID kennt, siehe measurementsForEstimate.
+                    if (c.cellId == null && c.arfcn != null && c.pci != null) {
+                        dao.groupsWithCell(c.rat, c.arfcn, c.pci).forEach { touched.putIfAbsent(it, c.rat) }
+                    }
                 }
             }
         }
@@ -147,14 +153,48 @@ object Recorder {
         }
     }
 
+    /** Messungen einer Station für die Schätzung, das Band je Zelle und die Zahl übernommener Nachbarmessungen. */
+    class EstimateInput(val measurements: List<MeasurementEntity>, val bandOf: Map<String, String?>, val adopted: Int)
+
+    /** Übernommene Nachbarmessungen nur aus diesem Umkreis um die eigenen Messorte (PCI-Wiederholung) */
+    private const val ADOPT_RADIUS_M = 5_000.0
+    private const val ADOPT_MAX_PER_CELL = 1_500
+
+    /**
+     * Messungen der Station [groupKey] plus Messungen ihrer Zellen aus der Zeit, als sie nur Nachbarzelle
+     * waren: Diese stehen ohne Cell-ID unter „nb|ARFCN|PCI“. Übernommen wird, was dieselbe Technik, dasselbe
+     * Netz, denselben Träger und dieselbe PCI hat und höchstens [ADOPT_RADIUS_M] vom Schwerpunkt der eigenen
+     * Messorte entfernt liegt. So startet eine Zelle bei der ersten Verbindung nicht bei null.
+     */
+    suspend fun measurementsForEstimate(db: AppDatabase, groupKey: String): EstimateInput {
+        val dao = db.cellDao()
+        val own = dao.measurementsForGroup(groupKey, ESTIMATE_MAX_MEASUREMENTS)
+        val cells = dao.cellsOfGroup(groupKey)
+        val bandOf = cells.associate { it.id to it.band }
+        if (own.isEmpty()) return EstimateInput(own, bandOf, 0)
+        val lat = own.map { it.latitude }.average()
+        val lon = own.map { it.longitude }.average()
+        val adopted = cells.filter { it.cellId != null && it.arfcn != null && it.pci != null }.flatMap { c ->
+            val nbKey = "${c.rat}|${c.mcc}-${c.mnc}|nb|${c.arfcn}|${c.pci}"
+            dao.measurementsForGroup(nbKey, ADOPT_MAX_PER_CELL)
+                .filter { distanceM(lat, lon, it.latitude, it.longitude) <= ADOPT_RADIUS_M }
+                .map { it.copy(cellKey = c.id, groupKey = groupKey, serving = false, timingAdvance = null) }
+        }
+        return EstimateInput(own + adopted, bandOf, adopted.size)
+    }
+
     /** Rechnet die Standortschätzung einer Station neu. */
     suspend fun updateEstimate(db: AppDatabase, groupKey: String, rat: String, now: Long = System.currentTimeMillis()) {
         val dao = db.cellDao()
-        val measurements = dao.measurementsForGroup(groupKey, ESTIMATE_MAX_MEASUREMENTS)
+        val input = measurementsForEstimate(db, groupKey)
+        val measurements = input.measurements
         // Geländekacheln für die Messorte anfordern (lädt im Hintergrund; bis dahin ohne Gelände).
         Terrain.request(measurements.map { it.latitude to it.longitude }.distinctBy { (la, lo) -> (la * 20).toInt() to (lo * 20).toInt() })
         val elevation: ((Double, Double) -> Double?)? = if (Terrain.enabled) Terrain::elevation else null
-        val result = withContext(Dispatchers.Default) { LocationEstimator.estimate(rat, measurements, elevation) }
+        val model = SignalModelStore.active
+        val result = withContext(Dispatchers.Default) {
+            LocationEstimator.estimate(rat, measurements, elevation, model, input.bandOf)
+        }
         if (result == null) {
             dao.deleteEstimate(groupKey)
             return
@@ -165,7 +205,7 @@ object Recorder {
                 latitude = result.latitude,
                 longitude = result.longitude,
                 radiusM = result.radiusM,
-                method = result.method,
+                method = result.method + if (input.adopted > 0) ", +${input.adopted} Nachbarmessungen" else "",
                 spots = result.spots,
                 measurements = result.measurements,
                 updatedAt = now,

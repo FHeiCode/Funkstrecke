@@ -21,6 +21,8 @@ import de.funkstrecke.data.Recorder
 import de.funkstrecke.data.buildStations
 import de.funkstrecke.data.distanceM
 import de.funkstrecke.locate.LocationEstimator
+import de.funkstrecke.data.SignalLearning
+import de.funkstrecke.locate.SignalModelStore
 import de.funkstrecke.locate.Terrain
 import de.funkstrecke.radio.CellScanner
 import de.funkstrecke.radio.EndcMonitor
@@ -77,6 +79,12 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 prefs.edit().putBoolean(RECOMPUTE_TERRAIN, true).apply()
             }
         }
+        // Signalmodell höchstens einmal am Tag neu lernen, sobald die Stationen geladen sind.
+        viewModelScope.launch {
+            delay(20_000)
+            val learnedAt = SignalModelStore.state.value.learned?.learnedAt ?: 0L
+            if (System.currentTimeMillis() - learnedAt > 24 * 3600 * 1000L) learnSignalModel()
+        }
         // … und jedes Mal, wenn neue Kacheln angekommen sind (gesammelt, höchstens alle paar Sekunden).
         viewModelScope.launch {
             Terrain.ready.collectLatest {
@@ -84,6 +92,44 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                 Recorder.recomputeAll(db)
             }
         }
+    }
+
+    private val _learning = MutableStateFlow(false)
+    /** Das Signalmodell wird gerade gelernt und geprüft */
+    val learning: StateFlow<Boolean> = _learning.asStateFlow()
+
+    /**
+     * Lernt das Signalmodell an den gut verorteten Stationen, prüft es an Stationen mit OSM-Mast und rechnet
+     * alle Schätzungen neu, wenn sich dadurch das verwendete Modell ändert.
+     */
+    fun learnSignalModel() {
+        if (_learning.value) return
+        _learning.value = true
+        viewModelScope.launch {
+            try {
+                val before = SignalModelStore.active
+                withContext(Dispatchers.Default) {
+                    val all = stations.value
+                    val references = SignalLearning.references(all)
+                    val model = SignalLearning.learn(db, references)
+                    val check = SignalLearning.check(db, all, references)
+                    SignalModelStore.save(model, check)
+                }
+                if (SignalModelStore.active != before) Recorder.recomputeAll(db)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("Learning", "Signalmodell nicht gelernt", e)
+            } finally {
+                _learning.value = false
+            }
+        }
+    }
+
+    fun setLearnedModelEnabled(value: Boolean) {
+        val before = SignalModelStore.active
+        SignalModelStore.setEnabled(value)
+        if (SignalModelStore.active != before) viewModelScope.launch { Recorder.recomputeAll(db) }
     }
 
     /** Geländemodell ein- oder ausschalten; alle Schätzungen werden neu berechnet. */
@@ -120,12 +166,14 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val pairs = withContext(Dispatchers.Default) {
                 stations.value.filter { !it.inferred && it.estimate != null }.mapNotNull { s ->
-                    val measurements = dao.measurementsForGroup(s.key, Recorder.ESTIMATE_MAX_MEASUREMENTS)
-                    val without = LocationEstimator.estimate(s.rat, measurements) ?: return@mapNotNull null
+                    val input = Recorder.measurementsForEstimate(db, s.key)
+                    val measurements = input.measurements
+                    val model = SignalModelStore.active
+                    val without = LocationEstimator.estimate(s.rat, measurements, null, model, input.bandOf) ?: return@mapNotNull null
                     val mast = s.osmMast?.takeIf {
                         distanceM(without.latitude, without.longitude, it.latitude, it.longitude) <= 500.0
                     } ?: return@mapNotNull null
-                    val with = LocationEstimator.estimate(s.rat, measurements, Terrain::elevation) ?: return@mapNotNull null
+                    val with = LocationEstimator.estimate(s.rat, measurements, Terrain::elevation, model, input.bandOf) ?: return@mapNotNull null
                     if (!with.method.contains("Gelände")) return@mapNotNull null
                     distanceM(without.latitude, without.longitude, mast.latitude, mast.longitude) to
                         distanceM(with.latitude, with.longitude, mast.latitude, mast.longitude)
