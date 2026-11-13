@@ -83,6 +83,11 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             delay(20_000)
             val learnedAt = SignalModelStore.state.value.learned?.learnedAt ?: 0L
+            // Einmalig alle Schätzungen neu rechnen, damit vorhandene Nachbarmessungen sofort mitzählen.
+            if (!prefs.getBoolean(RECOMPUTE_ADOPTION, false)) {
+                Recorder.recomputeAll(db)
+                prefs.edit().putBoolean(RECOMPUTE_ADOPTION, true).apply()
+            }
             if (System.currentTimeMillis() - learnedAt > 24 * 3600 * 1000L) learnSignalModel()
         }
         // … und jedes Mal, wenn neue Kacheln angekommen sind (gesammelt, höchstens alle paar Sekunden).
@@ -414,5 +419,6 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val RECOMPUTE_TA_FIX = "recomputed_after_ta_fix"
         const val RECOMPUTE_TERRAIN = "recomputed_with_terrain"
+        const val RECOMPUTE_ADOPTION = "recomputed_with_neighbour_adoption"
     }
 }
