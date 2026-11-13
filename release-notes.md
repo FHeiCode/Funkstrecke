@@ -1,3 +1,4 @@
-Live-Tab: Titel größer und fett
+Karte: Nachbarzellen besser erkennbar
 
-- Der Titel „Funkstrecke“ im Live-Tab ist jetzt fett und 50 % größer.
+- Die Nachbarzellen auf der Karte sind jetzt dunkler grün und auf der hellen Karte besser zu sehen.
+- Sie sind weiter heller als die verbundene Zelle.
