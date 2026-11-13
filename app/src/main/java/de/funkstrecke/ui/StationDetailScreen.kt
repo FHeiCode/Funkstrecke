@@ -579,7 +579,14 @@ private fun OsmSection(station: BaseStation, vm: ScannerViewModel) {
                 e == null -> tr("Ohne Standortschätzung lässt sich kein Mast zuordnen.", "No mast can be matched without a location estimate.")
                 mast != null && d != null -> tr("Nächster Funkmast: ${formatDistance(d)} entfernt", "Nearest radio mast: ${formatDistance(d)} away") +
                     "\n" + mast.description + (mast.name?.let { " · $it" } ?: "") +
-                    if (d <= OsmMasts.CONFIRM_M) tr("\nBestätigt die Schätzung (≤ 100 m).", "\nConfirms the estimate (≤ 100 m).") else ""
+                    when {
+                        station.osmConfirmed -> tr("\nBestätigt die Schätzung (≤ 100 m, kein anderer Maststandort im Umkreis von 300 m).", "\nConfirms the estimate (≤ 100 m, no other mast site within 300 m).")
+                        station.osmMastNear -> tr(
+                            "\nNur ein Hinweis, keine Bestätigung: Der nächste andere Maststandort liegt ${formatDistance(station.osmOtherSiteDistanceM ?: 0.0)} von der Schätzung entfernt. Bei so dichten Masten kann die Nähe Zufall sein.",
+                            "\nOnly a hint, not a confirmation: the next other mast site is ${formatDistance(station.osmOtherSiteDistanceM ?: 0.0)} from the estimate. With masts this dense, the proximity may be coincidence.",
+                        )
+                        else -> ""
+                    }
                 progress?.running == true -> tr("Lade Funkmasten aus OpenStreetMap …", "Loading radio masts from OpenStreetMap …")
                 progress?.error != null && !station.osmChecked -> tr("Nicht geladen: ", "Not loaded: ") + progress?.error
                 station.osmChecked -> tr(

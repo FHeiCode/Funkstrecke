@@ -445,7 +445,7 @@ private fun ReliabilitySummary(counts: Map<Reliability, Int>, selected: Reliabil
                 }
             }
             Text(
-                tr("Zuverlässig: Standort genauer als ±200 m, höchstens 200 m von OpenCelliD oder 100 m von einem OSM-Mast entfernt. ", "Reliable: location better than ±200 m, at most 200 m from OpenCelliD or 100 m from an OSM mast. ") +
+                tr("Zuverlässig: Standort genauer als ±200 m, höchstens 200 m von OpenCelliD oder 100 m von einem eindeutigen OSM-Mast (kein anderer Maststandort im Umkreis von 300 m) entfernt. ", "Reliable: location better than ±200 m, at most 200 m from OpenCelliD or 100 m from an unambiguous OSM mast (no other mast site within 300 m). ") +
                     tr("Kandidat: genauer als ±1 km. Übrige: mögliche Artefakte (kein oder sehr unsicherer Standort).", "Candidate: better than ±1 km. Others: potential artefacts (no or very uncertain location)."),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

@@ -176,7 +176,7 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
                     val measurements = input.measurements
                     val model = SignalModelStore.active
                     val without = LocationEstimator.estimate(s.rat, measurements, null, model, input.bandOf) ?: return@mapNotNull null
-                    val mast = s.osmMast?.takeIf {
+                    val mast = s.osmMast?.takeIf { _ -> s.osmIsolated }?.takeIf {
                         distanceM(without.latitude, without.longitude, it.latitude, it.longitude) <= 500.0
                     } ?: return@mapNotNull null
                     val with = LocationEstimator.estimate(s.rat, measurements, Terrain::elevation, model, input.bandOf) ?: return@mapNotNull null

@@ -27,7 +27,6 @@ object SignalLearning {
     /** Station mit bekanntem Standort */
     data class Reference(val key: String, val rat: String, val latitude: Double, val longitude: Double, val fromOsm: Boolean)
 
-    private const val OSM_TRUTH_M = 100.0
     private const val OWN_TRUTH_RADIUS_M = 150.0
     /** Näher am Mast verfälscht der Standortfehler den Abstand zu stark */
     private const val MIN_DISTANCE_M = 150.0
@@ -45,7 +44,7 @@ object SignalLearning {
         val mast = s.osmMast
         val d = s.osmMastDistanceM
         when {
-            mast != null && d != null && d <= OSM_TRUTH_M -> Reference(s.key, s.rat, mast.latitude, mast.longitude, true)
+            mast != null && d != null && s.osmConfirmed -> Reference(s.key, s.rat, mast.latitude, mast.longitude, true)
             e.radiusM <= OWN_TRUTH_RADIUS_M && e.method.startsWith("Multilateration") && !e.method.contains("mehrdeutig") ->
                 Reference(s.key, s.rat, e.latitude, e.longitude, false)
             else -> null
@@ -179,7 +178,8 @@ object SignalLearning {
     suspend fun check(db: AppDatabase, stations: List<BaseStation>, references: List<Reference>): Checks {
         fun fold(key: String) = (key.hashCode() and 0x7fffffff) % 2
         val targets = stations.filter { s ->
-            !s.inferred && s.estimate != null && s.osmMast != null && (s.osmMastDistanceM ?: Double.MAX_VALUE) <= 300.0
+            // Nur eindeutige Masten: Der „nächste Mast“ in dichter Bebauung ist Zufall und bevorzugt die Vorgabe.
+            !s.inferred && s.estimate != null && s.osmMast != null && s.osmIsolated
         }
         val elevation: ((Double, Double) -> Double?)? = if (Terrain.enabled) Terrain::elevation else null
         val taPairs = ArrayList<Pair<Double, Double>>()
