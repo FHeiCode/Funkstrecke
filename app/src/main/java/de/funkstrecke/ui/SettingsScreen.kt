@@ -224,6 +224,26 @@ fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> U
                 }
             }
 
+            Section(tr("Verdächtige Stationen", "Suspect stations")) {
+                val min by SettingsStore.suspectMinMeasurements.collectAsStateWithLifecycle()
+                Text(
+                    tr(
+                        "In der Stationsansicht kannst du eine Station als verdächtig markieren. Zeichnest du danach im Umkreis von 1 km " +
+                            "wieder auf und wird sie dabei seltener als hier eingestellt neu gemessen, wird sie mit allen Zellen und Messungen gelöscht.",
+                        "In the station view you can mark a station as suspect. If you then record within 1 km again and it is measured " +
+                            "fewer times than set here, it is deleted with all its cells and measurements.",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Mindestens neue Messungen", "Minimum new measurements"), modifier = Modifier.weight(1f))
+                    OutlinedButton(onClick = { SettingsStore.setSuspectMinMeasurements(min - 1) }, enabled = min > 1) { Text("−") }
+                    Text("$min", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 12.dp))
+                    OutlinedButton(onClick = { SettingsStore.setSuspectMinMeasurements(min + 1) }, enabled = min < 50) { Text("+") }
+                }
+            }
+
             Section(tr("Lernen", "Learning")) {
                 LearningSettings(vm)
             }

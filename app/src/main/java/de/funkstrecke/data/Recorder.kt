@@ -8,6 +8,7 @@ import de.funkstrecke.locate.Terrain
 import de.funkstrecke.radio.CellRecord
 import de.funkstrecke.radio.EndcMode
 import de.funkstrecke.radio.EndcSnapshot
+import de.funkstrecke.util.SettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -151,6 +152,8 @@ object Recorder {
                 updateEstimate(db, group, rat, now)
             }
         }
+        // Verdächtige Stationen prüfen (höchstens einmal pro Minute).
+        if (location != null) Suspects.check(db, SettingsStore.suspectMinMeasurements.value, now)
     }
 
     /** Messungen einer Station für die Schätzung, das Band je Zelle und die Zahl übernommener Nachbarmessungen. */

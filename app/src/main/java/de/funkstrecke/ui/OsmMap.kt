@@ -57,7 +57,42 @@ data class MapDot(
     /** Kleine Sprechblase oben rechts am Punkt, z. B. Zahl der Nachbarzellen am selben Standort */
     val badge: String? = null,
     val badgeColor: Color = Color.White,
+    /** Als kleines Fischchen neben dem Punkt zeichnen (verdächtige Station, „fishy“) */
+    val fish: Boolean = false,
 )
+
+/** Kleiner Fisch mit weißem Rand, leicht rechts oberhalb der Position (verdächtige Station). */
+private fun fishDrawable(context: Context, color: Color, sizeDp: Int): android.graphics.drawable.Drawable {
+    val density = context.resources.displayMetrics.density
+    val w = (sizeDp * density).toInt().coerceAtLeast(12)
+    val h = (w * 0.62f).toInt()
+    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+    val c = Canvas(bmp)
+    val stroke = 1.4f * density
+    val cy = h / 2f
+    // Körper als Ellipse links, Schwanz als Dreieck rechts.
+    val body = android.graphics.RectF(stroke, stroke, w * 0.72f, h - stroke)
+    val tail = android.graphics.Path().apply {
+        moveTo(w * 0.64f, cy)
+        lineTo(w - stroke, stroke)
+        lineTo(w - stroke, h - stroke)
+        close()
+    }
+    val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() }
+    val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = stroke
+        this.color = android.graphics.Color.WHITE
+        strokeJoin = Paint.Join.ROUND
+    }
+    c.drawPath(tail, fill)
+    c.drawPath(tail, edge)
+    c.drawOval(body, fill)
+    c.drawOval(body, edge)
+    // Auge
+    c.drawCircle(w * 0.2f, cy - h * 0.08f, 1.3f * density, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.WHITE })
+    return android.graphics.drawable.BitmapDrawable(context.resources, bmp)
+}
 
 /** Dreieck mit weißem Rand: Symbol für einen Funkmast aus OpenStreetMap. */
 private fun mastDrawable(context: Context, color: Color, sizeDp: Int): android.graphics.drawable.Drawable {
@@ -467,11 +502,13 @@ fun OsmMap(
                 added += Marker(map).apply {
                     position = GeoPoint(d.latitude, d.longitude)
                     icon = when {
+                        d.fish -> fishDrawable(context, d.color, d.sizeDp)
                         d.mast -> mastDrawable(context, d.color, d.sizeDp)
                         d.badge != null -> badgedDotDrawable(context, d.color, d.sizeDp, d.badge, d.badgeColor)
                         else -> dotDrawable(context, d.color, d.sizeDp, d.hollow)
                     }
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    // Das Fischchen sitzt rechts oberhalb des Stationspunkts, damit dieser sichtbar bleibt.
+                    if (d.fish) setAnchor(-0.25f, 1.35f) else setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     title = d.title
                     snippet = d.snippet
                     val click = d.onClick
