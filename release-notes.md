@@ -1,7 +1,6 @@
-OSM-Masten: nur eindeutige bestätigen
+Verdächtige Stationen
 
-- Ein OSM-Mast bestätigt eine Station nur noch, wenn er höchstens 100 m von der Schätzung entfernt ist und kein anderer Maststandort näher als 300 m liegt. In der Stadt war die Nähe zu einem Mast oft Zufall.
-- Bei dichten Masten zeigt die Stationsansicht den Mast nur als Hinweis.
-- Die Zahl der zuverlässigen Stationen kann deshalb sinken.
-- Einstellungen → Bewertung: Der Schalter „Nur eindeutige OSM-Masten bestätigen“ stellt bei Bedarf die alte Regel wieder her.
-- Lernen und „Wirkung prüfen“ nutzen nur noch eindeutige Masten als Prüfstein.
+- In der Stationsansicht lässt sich eine Station als verdächtig markieren.
+- Zeichnest du danach im Umkreis von 1 km wieder auf und wird sie dabei seltener als eingestellt neu gemessen, wird sie mit allen Zellen und Messungen gelöscht. Wird sie oft genug gemessen, verschwindet die Markierung.
+- Einstellungen → Verdächtige Stationen: Mindestzahl neuer Messungen (Standard 1).
+- Die Stationsliste zeigt markierte Stationen mit der Plakette „verdächtig“.
