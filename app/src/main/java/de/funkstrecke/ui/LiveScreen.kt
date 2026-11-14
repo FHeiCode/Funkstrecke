@@ -170,14 +170,8 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        // Logo statt Schriftzug; helle bzw. dunkle Fassung passend zum Design (Höhe wie zuvor der 33-sp-Titel).
-                        androidx.compose.foundation.Image(
-                            painter = androidx.compose.ui.res.painterResource(
-                                if (androidx.compose.foundation.isSystemInDarkTheme()) de.funkstrecke.R.drawable.logo_funkstrecke_dark else de.funkstrecke.R.drawable.logo_funkstrecke_light,
-                            ),
-                            contentDescription = "Funkstrecke",
-                            modifier = Modifier.height(40.dp),
-                        )
+                        // Logo statt Schriftzug, in den Farben des App-Farbschemas.
+                        FunkstreckeLogo(Modifier.height(40.dp))
                         Text(
                             live.at?.let { tr("Live-Scan · ${formatAgo(it, now)} · ${live.cells.size} Zellen hörbar", "Live scan · ${formatAgo(it, now)} · ${live.cells.size} cells audible") }
                                 ?: tr("Live-Scan", "Live scan"),
