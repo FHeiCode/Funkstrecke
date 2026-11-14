@@ -168,10 +168,14 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
+                // Höher als üblich (64 dp), damit Logo, Abstand und Statuszeile Platz haben.
+                expandedHeight = 76.dp,
                 title = {
                     Column {
                         // Logo statt Schriftzug, in den Farben des App-Farbschemas.
                         FunkstreckeLogo(Modifier.height(40.dp))
+                        // Etwas Luft zwischen Punktwelle und Statuszeile.
+                        Spacer(Modifier.height(8.dp))
                         Text(
                             live.at?.let { tr("Live-Scan · ${formatAgo(it, now)} · ${live.cells.size} Zellen hörbar", "Live scan · ${formatAgo(it, now)} · ${live.cells.size} cells audible") }
                                 ?: tr("Live-Scan", "Live scan"),
