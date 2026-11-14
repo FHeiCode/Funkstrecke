@@ -94,7 +94,7 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
+fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit, onOpen: (String) -> Unit = {}) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     var hasPermission by remember { mutableStateOf(LocationHelper.hasPermission(context)) }
@@ -120,6 +120,9 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
         Busy.NONE -> CallBehavior.NORMAL
     }
     val totalCells by vm.cellCount.collectAsStateWithLifecycle()
+    // Station je gehörter Zelle, damit ein Tipp auf die Zelle die Stationsansicht öffnet.
+    val stations by vm.stations.collectAsStateWithLifecycle()
+    val stationOfCell = remember(stations, live.cells) { stationKeysFor(context, stations, live.cells) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -267,11 +270,11 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
             }
             if (serving.isNotEmpty()) {
                 item { SectionLabel(if (serving.size == 1) tr("Verbundene Zelle", "Serving cell") else tr("Verbundene Zellen", "Serving cells")) }
-                items(serving, key = { "s|" + it.key }) { LiveCellCard(it, null) }
+                items(serving, key = { "s|" + it.key }) { LiveCellCard(it, null, stationOfCell[it.key]?.let { k -> { onOpen(k) } }) }
             }
             if (neighbours.isNotEmpty()) {
                 item { SectionLabel(tr("Nachbarzellen (${neighbours.size})", "Neighbour cells (${neighbours.size})")) }
-                items(neighbours, key = { "n|" + it.key + "|" + it.arfcn }) { cell -> LiveCellCard(cell, siteHint(cell, serving)) }
+                items(neighbours, key = { "n|" + it.key + "|" + it.arfcn }) { cell -> LiveCellCard(cell, siteHint(cell, serving), stationOfCell[cell.key]?.let { k -> { onOpen(k) } }) }
             }
             if (live.cells.isNotEmpty()) {
                 item {
@@ -440,8 +443,8 @@ private fun siteHint(cell: CellRecord, serving: List<CellRecord>): String? {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
+private fun LiveCellCard(cell: CellRecord, siteHint: String?, onClick: (() -> Unit)? = null) {
+    val content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit = {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RatBadge(cell.rat)
@@ -494,6 +497,12 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?) {
                 )
             }
         }
+    }
+    // Mit bekannter Station antippbar: öffnet die Stationsansicht.
+    if (onClick != null) {
+        OutlinedCard(onClick = onClick, modifier = Modifier.fillMaxWidth(), content = content)
+    } else {
+        OutlinedCard(Modifier.fillMaxWidth(), content = content)
     }
 }
 
@@ -625,4 +634,23 @@ private fun yesNo(value: Boolean?): String = when (value) {
     true -> tr("ja", "yes")
     false -> tr("nein", "no")
     null -> "–"
+}
+
+/**
+ * Station je Zellkennung im Live-Scan: zuerst über den Abgleich der Karte (Cell-ID, sonst Band/ARFCN/PCI bei
+ * bewerteten Stationen in der Nähe), sonst eine Station, die genau diese Zellkennung führt.
+ */
+private fun stationKeysFor(context: android.content.Context, stations: List<de.funkstrecke.data.BaseStation>, cells: List<CellRecord>): Map<String, String> {
+    if (cells.isEmpty() || stations.isEmpty()) return emptyMap()
+    val out = HashMap<String, String>()
+    val here = LocationHelper.lastKnown(context)?.let { it.latitude to it.longitude }
+    val matches = de.funkstrecke.data.matchLiveCells(stations.filter { it.estimate != null }, cells, here)
+    for ((key, m) in matches.byStation) {
+        out[m.cell.key] = key
+        m.neighbourCells.forEach { out.putIfAbsent(it.key, key) }
+    }
+    val byCell = HashMap<String, String>()
+    stations.forEach { s -> s.allCellEntities.forEach { c -> byCell.putIfAbsent(c.id, s.key) } }
+    cells.forEach { c -> if (c.key !in out) byCell[c.key]?.let { out[c.key] = it } }
+    return out
 }
