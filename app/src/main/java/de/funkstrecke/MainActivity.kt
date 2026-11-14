@@ -103,7 +103,7 @@ class MainActivity : ComponentActivity() {
                         startDestination = "live",
                         modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
                     ) {
-                        composable("live") { LiveScreen(vm, onSettings = { nav.navigate("settings") }) }
+                        composable("live") { LiveScreen(vm, onSettings = { nav.navigate("settings") }, onOpen = ::openStation) }
                         composable("settings") {
                             SettingsScreen(vm, onBack = { nav.popBackStack() }, onHomeBase = { nav.navigate("home") })
                         }

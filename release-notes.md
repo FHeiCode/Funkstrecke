@@ -1,5 +1,5 @@
-Logo im Live-Tab
+Live-Tab: Tipp auf eine Zelle öffnet ihre Station
 
-- Oben im Live-Tab steht jetzt das Funkstrecke-Logo statt des Schriftzugs.
-- Das Logo nimmt die Farben der App an und passt so zum hellen und zum dunklen Design.
-- Etwas mehr Abstand zwischen Logo und Statuszeile.
+- Ein Tipp auf eine Zelle im Live-Tab öffnet die Stationsansicht, wenn die Zelle einer bekannten Station zugeordnet werden kann.
+- Die verbundene Zelle wird über ihre Cell-ID zugeordnet, Nachbarzellen wie auf der Karte über Band, ARFCN und PCI.
+- Zellen ohne bekannte Station bleiben wie bisher ohne Tipp-Funktion.
