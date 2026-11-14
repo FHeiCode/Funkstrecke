@@ -236,6 +236,26 @@ fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> U
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                val autoArtefacts by SettingsStore.autoArtefacts.collectAsStateWithLifecycle()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Mögliche Artefakte automatisch markieren", "Mark potential artefacts automatically"), style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            tr(
+                                "Jede als mögliches Artefakt bewertete Station gilt als verdächtig, nach derselben Regel. Wird sie besser bewertet " +
+                                    "oder oft genug neu gemessen, verschwindet die Markierung und kommt nicht wieder. Ausschalten entfernt alle " +
+                                    "automatischen Markierungen, die noch offen sind.",
+                                "Every station rated as a potential artefact counts as suspect, under the same rule. If its rating improves " +
+                                    "or it is measured often enough, the mark disappears for good. Switching off removes all automatic marks " +
+                                    "that are still open.",
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Switch(checked = autoArtefacts, onCheckedChange = { SettingsStore.setAutoArtefacts(it) })
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Mindestens neue Messungen", "Minimum new measurements"), modifier = Modifier.weight(1f))
                     OutlinedButton(onClick = { SettingsStore.setSuspectMinMeasurements(min - 1) }, enabled = min > 1) { Text("−") }

@@ -95,6 +95,15 @@ object SettingsStore {
         prefs?.edit()?.putInt("suspectMin", suspectMinState.value)?.apply()
     }
 
+    private val autoArtefactsState = MutableStateFlow(true)
+    /** Mögliche Artefakte automatisch als verdächtig markieren (und so ggf. löschen lassen) */
+    val autoArtefacts: StateFlow<Boolean> = autoArtefactsState.asStateFlow()
+
+    fun setAutoArtefacts(value: Boolean) {
+        autoArtefactsState.value = value
+        prefs?.edit()?.putBoolean("autoArtefacts", value)?.apply()
+    }
+
     private val dataState = MutableStateFlow(CallBehavior.PASSIVE)
     val dataBehavior: StateFlow<CallBehavior> = dataState.asStateFlow()
 
@@ -123,6 +132,7 @@ object SettingsStore {
         dataState.value = CallBehavior.entries.firstOrNull { it.name == p.getString("dataBehavior", null) } ?: CallBehavior.PASSIVE
         ocidKeyState.value = p.getString("openCellIdKey", "").orEmpty()
         suspectMinState.value = p.getInt("suspectMin", 1)
+        autoArtefactsState.value = p.getBoolean("autoArtefacts", true)
         strictOsmState.value = p.getBoolean("strictOsm", true)
     }
 

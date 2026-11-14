@@ -1,5 +1,6 @@
 package de.funkstrecke.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Entity
 import androidx.room.Insert
@@ -22,15 +23,39 @@ data class SuspectEntity(
     val markedAt: Long,
     val latitude: Double,
     val longitude: Double,
+    /** Automatisch markiert, weil die Station als mögliches Artefakt bewertet ist */
+    @ColumnInfo(defaultValue = "0") val auto: Boolean = false,
+    /**
+     * Wann die Markierung aufgehoben wurde (oft genug neu gemessen oder von Hand), sonst null. Die Zeile bleibt
+     * stehen, damit ein bestätigtes Artefakt nicht gleich wieder automatisch markiert wird.
+     */
+    val clearedAt: Long? = null,
 )
+
+/** Mittelpunkt der Messorte */
+data class LatLon(val lat: Double?, val lon: Double?)
 
 @Dao
 interface SuspectDao {
-    @Query("SELECT * FROM suspects")
+    @Query("SELECT * FROM suspects WHERE clearedAt IS NULL")
     fun observe(): Flow<List<SuspectEntity>>
 
-    @Query("SELECT * FROM suspects")
+    /** Aktive Markierungen */
+    @Query("SELECT * FROM suspects WHERE clearedAt IS NULL")
     suspend fun all(): List<SuspectEntity>
+
+    /** Alle Messgruppen mit Zeile, auch aufgehobene */
+    @Query("SELECT groupKey FROM suspects")
+    suspend fun allKeys(): List<String>
+
+    @Query("UPDATE suspects SET clearedAt = :now WHERE groupKey IN (:groupKeys)")
+    suspend fun clear(groupKeys: List<String>, now: Long)
+
+    @Query("DELETE FROM suspects WHERE auto = 1 AND clearedAt IS NULL")
+    suspend fun deleteActiveAuto()
+
+    @Query("SELECT AVG(latitude) AS lat, AVG(longitude) AS lon FROM measurements WHERE groupKey IN (:groupKeys)")
+    suspend fun centroid(groupKeys: List<String>): LatLon
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(rows: List<SuspectEntity>)
@@ -75,7 +100,7 @@ object Suspects {
     private var lastCheck = 0L
 
     /** Stand einer markierten Station */
-    data class Status(val markedAt: Long, val newMeasurements: Int, val scansNear: Int)
+    data class Status(val markedAt: Long, val newMeasurements: Int, val scansNear: Int, val auto: Boolean)
 
     suspend fun mark(db: AppDatabase, station: BaseStation, now: Long = System.currentTimeMillis()) {
         // Ohne Schätzung lässt sich „in der Nähe“ nicht bestimmen.
@@ -86,8 +111,35 @@ object Suspects {
         db.suspectDao().insert(rows)
     }
 
-    suspend fun unmark(db: AppDatabase, station: BaseStation) {
-        db.suspectDao().delete(station.cells.map { it.groupKey }.distinct())
+    suspend fun unmark(db: AppDatabase, station: BaseStation, now: Long = System.currentTimeMillis()) {
+        db.suspectDao().clear(station.cells.map { it.groupKey }.distinct(), now)
+    }
+
+    /**
+     * Markiert mögliche Artefakte automatisch und hebt automatische Markierungen auf, deren Station nicht mehr
+     * als Artefakt gilt. Stationen mit einer (auch aufgehobenen) Zeile werden nicht erneut markiert. Ohne
+     * Schätzung dient der Mittelpunkt der Messorte als Position; ohne Messorte wird nicht markiert.
+     */
+    suspend fun syncArtefacts(db: AppDatabase, stations: List<BaseStation>, now: Long = System.currentTimeMillis()) {
+        val dao = db.suspectDao()
+        val known = dao.allKeys().toSet()
+        val active = dao.all().associateBy { it.groupKey }
+        val rows = ArrayList<SuspectEntity>()
+        val noLongerArtefact = ArrayList<String>()
+        for (s in stations) {
+            val keys = s.cells.map { it.groupKey }.distinct()
+            if (s.assessment.reliability == Reliability.ARTEFACT) {
+                if (keys.any { it in known }) continue
+                val pos = s.estimate?.let { it.latitude to it.longitude }
+                    ?: dao.centroid(keys).let { c -> if (c.lat != null && c.lon != null) c.lat to c.lon else null }
+                    ?: continue
+                keys.forEach { rows += SuspectEntity(it, s.key, now, pos.first, pos.second, auto = true) }
+            } else {
+                keys.filter { active[it]?.auto == true }.let { noLongerArtefact += it }
+            }
+        }
+        if (rows.isNotEmpty()) dao.insert(rows)
+        if (noLongerArtefact.isNotEmpty()) dao.clear(noLongerArtefact, now)
     }
 
     /** Neue Messungen der Gruppe seit dem Markieren, einschließlich passender Nachbarmessungen */
@@ -104,7 +156,7 @@ object Suspects {
         val rows = db.suspectDao().all().filter { it.groupKey in groupKeys }
         if (rows.isEmpty()) return null
         val first = rows.minBy { it.markedAt }
-        return Status(first.markedAt, rows.sumOf { newMeasurements(db, it.groupKey, it.markedAt) }, scansNear(db, first))
+        return Status(first.markedAt, rows.sumOf { newMeasurements(db, it.groupKey, it.markedAt) }, scansNear(db, first), rows.all { it.auto })
     }
 
     /**
@@ -123,7 +175,7 @@ object Suspects {
             val measured = group.sumOf { newMeasurements(db, it.groupKey, it.markedAt) }
             when {
                 // Oft genug wieder gemessen: Die Station gibt es wirklich.
-                measured >= minMeasurements -> dao.delete(group.map { it.groupKey })
+                measured >= minMeasurements -> dao.clear(group.map { it.groupKey }, now)
                 // In der Nähe aufgezeichnet, aber nicht (oft genug) gehört: löschen.
                 scansNear(db, first) >= NEAR_MIN_SCANS -> {
                     db.withTransaction {

@@ -230,6 +230,23 @@ class ScannerViewModel(app: Application) : AndroidViewModel(app) {
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    init {
+        // Mögliche Artefakte automatisch markieren; ausgeschaltet werden aktive automatische Markierungen entfernt.
+        viewModelScope.launch {
+            combine(stations, SettingsStore.autoArtefacts) { list, on -> list to on }
+                .collectLatest { (list, on) ->
+                    delay(10_000)
+                    withContext(Dispatchers.IO) {
+                        if (on) {
+                            if (list.isNotEmpty()) Suspects.syncArtefacts(db, list)
+                        } else {
+                            db.suspectDao().deleteActiveAuto()
+                        }
+                    }
+                }
+        }
+    }
+
     val cellCount: StateFlow<Int> = dao.observeCells().map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
