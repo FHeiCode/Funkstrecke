@@ -1,6 +1,5 @@
-Mögliche Artefakte automatisch aufräumen
+Logo im Live-Tab
 
-- Stationen, die als mögliches Artefakt bewertet sind, gelten automatisch als verdächtig.
-- Zeichnest du im Umkreis von 1 km wieder auf und wird ein solches Artefakt dabei seltener als eingestellt neu gemessen, wird es gelöscht.
-- Wird es besser bewertet oder oft genug gemessen, verschwindet die Markierung und kommt nicht wieder.
-- Einstellungen → Verdächtige Stationen: Schalter „Mögliche Artefakte automatisch markieren“ (Standard an).
+- Oben im Live-Tab steht jetzt das Funkstrecke-Logo statt des Schriftzugs.
+- Das Logo nimmt die Farben der App an und passt so zum hellen und zum dunklen Design.
+- Etwas mehr Abstand zwischen Logo und Statuszeile.
