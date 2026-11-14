@@ -717,7 +717,10 @@ private fun SuspectBlock(station: BaseStation, vm: ScannerViewModel) {
                 SuspectPill()
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    status?.let { tr("seit ${formatDateTime(it.markedAt)}", "since ${formatDateTime(it.markedAt)}") } ?: "",
+                    status?.let {
+                        (if (it.auto) tr("automatisch (mögliches Artefakt), ", "automatically (potential artefact), ") else "") +
+                            tr("seit ${formatDateTime(it.markedAt)}", "since ${formatDateTime(it.markedAt)}")
+                    } ?: "",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

@@ -224,7 +224,7 @@ interface CellDao {
         CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class,
         OsmMastEntity::class, OsmTileEntity::class, SuspectEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -248,6 +248,14 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("DELETE FROM opencellid WHERE cellKey IN ($bad)")
                 db.execSQL("DELETE FROM estimates WHERE groupKey IN ($badGroups)")
                 db.execSQL("DELETE FROM cells WHERE cellId IN (268435455, 68719476735)")
+            }
+        }
+
+        /** 8 → 9: automatische Markierung möglicher Artefakte; aufgehobene Markierungen bleiben stehen. */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `suspects` ADD COLUMN `auto` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `suspects` ADD COLUMN `clearedAt` INTEGER")
             }
         }
 
@@ -316,7 +324,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "funkstrecke.db",
                 )
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()

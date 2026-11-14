@@ -1,6 +1,6 @@
-Verdächtige Stationen
+Mögliche Artefakte automatisch aufräumen
 
-- In der Stationsansicht lässt sich eine Station als verdächtig markieren.
-- Zeichnest du danach im Umkreis von 1 km wieder auf und wird sie dabei seltener als eingestellt neu gemessen, wird sie mit allen Zellen und Messungen gelöscht. Wird sie oft genug gemessen, verschwindet die Markierung.
-- Einstellungen → Verdächtige Stationen: Mindestzahl neuer Messungen (Standard 1).
-- Die Stationsliste zeigt markierte Stationen mit der Plakette „verdächtig“, die Karte mit einem kleinen Fischchen.
+- Stationen, die als mögliches Artefakt bewertet sind, gelten automatisch als verdächtig.
+- Zeichnest du im Umkreis von 1 km wieder auf und wird ein solches Artefakt dabei seltener als eingestellt neu gemessen, wird es gelöscht.
+- Wird es besser bewertet oder oft genug gemessen, verschwindet die Markierung und kommt nicht wieder.
+- Einstellungen → Verdächtige Stationen: Schalter „Mögliche Artefakte automatisch markieren“ (Standard an).
