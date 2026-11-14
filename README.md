@@ -1,5 +1,7 @@
 # Funkstrecke
 
+Oben im Live-Tab steht das Funkstrecke-Logo; es nimmt die Farben des App-Farbschemas an (Schrift in der Textfarbe, Antenne, Punktwelle und eine Kontur in der Hauptfarbe, die zweite Kontur in der Akzentfarbe).
+
 Android-App (Kotlin, Jetpack Compose), die die Mobilfunk-Basisstationen in der Umgebung scannt, klassifiziert und ihren Standort aus deinen Messungen schätzt. Alle Daten bleiben auf dem Gerät.
 
 ## Funktionen
