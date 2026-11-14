@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,7 +58,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -170,12 +170,13 @@ fun LiveScreen(vm: ScannerViewModel, onSettings: () -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        // Issue #10: Titel fett und 50 % größer (Standard titleLarge = 22 sp → 33 sp)
-                        Text(
-                            "Funkstrecke",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 33.sp,
+                        // Logo statt Schriftzug; helle bzw. dunkle Fassung passend zum Design (Höhe wie zuvor der 33-sp-Titel).
+                        androidx.compose.foundation.Image(
+                            painter = androidx.compose.ui.res.painterResource(
+                                if (androidx.compose.foundation.isSystemInDarkTheme()) de.funkstrecke.R.drawable.logo_funkstrecke_dark else de.funkstrecke.R.drawable.logo_funkstrecke_light,
+                            ),
+                            contentDescription = "Funkstrecke",
+                            modifier = Modifier.height(40.dp),
                         )
                         Text(
                             live.at?.let { tr("Live-Scan · ${formatAgo(it, now)} · ${live.cells.size} Zellen hörbar", "Live scan · ${formatAgo(it, now)} · ${live.cells.size} cells audible") }
