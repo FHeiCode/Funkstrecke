@@ -61,6 +61,10 @@ fun operatorColorRaw(operator: String?): Color = when (operator) {
     "Vodafone" -> Color(0xFFD71A1A)
     "Telefónica (O2)" -> Color(0xFF2A4BC9)
     "1&1" -> Color(0xFF00897B)
+    "China Mobile" -> Color(0xFF0277BD)
+    "China Unicom" -> Color(0xFFC62828)
+    "China Telecom" -> Color(0xFF283593)
+    "China Broadnet" -> Color(0xFF6A1B9A)
     else -> Color(0xFF6B7A85)
 }
 

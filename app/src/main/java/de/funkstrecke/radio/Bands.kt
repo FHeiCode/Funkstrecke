@@ -5,7 +5,7 @@ data class BandInfo(val label: String, val mhz: String, val downlinkMhz: Double?
 
 /**
  * Umrechnung von Kanalnummern (EARFCN / NR-ARFCN / ARFCN) in Band und Frequenz
- * für die in Deutschland genutzten Bänder (3GPP TS 36.101 / 38.104 / 45.005).
+ * für die in Deutschland und China genutzten Bänder (3GPP TS 36.101 / 38.104 / 45.005).
  */
 object Bands {
     private data class LteBand(
@@ -21,6 +21,12 @@ object Bands {
         LteBand(28, "700", 758.0, 9210, 9210..9659),
         LteBand(32, "1500", 1452.0, 9920, 9920..10359),
         LteBand(38, "2600", 2570.0, 37750, 37750..38249),
+        // China (TDD und B5)
+        LteBand(5, "850", 869.0, 2400, 2400..2649),
+        LteBand(34, "2000", 2010.0, 36200, 36200..36349),
+        LteBand(39, "1900", 1880.0, 38250, 38250..38649),
+        LteBand(40, "2300", 2300.0, 38650, 38650..39649),
+        LteBand(41, "2500", 2496.0, 39650, 39650..41589),
     )
 
     fun lte(earfcn: Int?, reportedBand: Int?): BandInfo? {
@@ -41,6 +47,11 @@ object Bands {
         NrBand(1, "2100", 2110.0..2170.0),
         NrBand(7, "2600", 2620.0..2690.0),
         NrBand(78, "3600", 3300.0..3800.0),
+        // China. n41 überlappt oben mit n7 (2620–2690 MHz): Ohne gemeldetes Band zählt dort n7.
+        NrBand(41, "2500", 2496.0..2690.0),
+        NrBand(79, "4900", 4400.0..5000.0),
+        NrBand(40, "2300", 2300.0..2400.0),
+        NrBand(5, "850", 869.0..894.0),
     )
 
     fun nrFrequency(arfcn: Int): Double? = when {
@@ -68,15 +79,26 @@ object Bands {
     }
 }
 
-/** Netzbetreiber anhand MCC/MNC (Deutschland: MCC 262). */
+/** Netzbetreiber anhand MCC/MNC (Deutschland: MCC 262, China: MCC 460). */
 object Operators {
     fun name(mcc: String?, mnc: String?): String? {
-        if (mcc != "262" || mnc == null) return null
-        return when (mnc.padStart(2, '0')) {
-            "01", "06" -> "Telekom"
-            "02", "04", "09" -> "Vodafone"
-            "03", "05", "07", "08", "11" -> "Telefónica (O2)"
-            "23" -> "1&1"
+        if (mnc == null) return null
+        val m = mnc.padStart(2, '0')
+        return when (mcc) {
+            "262" -> when (m) {
+                "01", "06" -> "Telekom"
+                "02", "04", "09" -> "Vodafone"
+                "03", "05", "07", "08", "11" -> "Telefónica (O2)"
+                "23" -> "1&1"
+                else -> null
+            }
+            "460" -> when (m) {
+                "00", "02", "04", "07", "08" -> "China Mobile"
+                "01", "06", "09" -> "China Unicom"
+                "03", "05", "11" -> "China Telecom"
+                "15" -> "China Broadnet"
+                else -> null
+            }
             else -> null
         }
     }
