@@ -415,7 +415,7 @@ private fun MeasurementRow(station: BaseStation, m: MeasurementEntity) {
         Text(
             listOfNotNull(
                 cell?.sector?.let { "S$it" } ?: cell?.pci?.let { "PCI $it" },
-                m.timingAdvance?.let { "TA $it" },
+                m.timingAdvance?.let { "TA ${de.funkstrecke.radio.taLabel(station.rat, it)}" },
                 m.accuracyM?.let { "GPS ±${it.toInt()} m" },
             ).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
@@ -459,7 +459,7 @@ private fun LinkedCells(station: BaseStation) {
                         Text(
                             l.confidence.label,
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (l.confidence == LinkConfidence.LIKELY) {
+                            color = if (l.confidence != LinkConfidence.POSSIBLE) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.secondary

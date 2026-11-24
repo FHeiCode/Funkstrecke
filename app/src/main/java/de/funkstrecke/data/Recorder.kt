@@ -56,6 +56,9 @@ object Recorder {
         val anchorKey = anchor?.key
         val anchorGroup = anchor?.let { groupKeyOf(it.rat, it.mcc, it.mnc, it.nodeId, it.key) }
         val legKeys = endc?.nrLegs?.map { it.key }?.toSet().orEmpty()
+        // Station der verbundenen Zelle je Technik, für Sekundärzellen ohne Cell-ID (Trägerbündelung).
+        val primaryGroup = cells.filter { it.registered && !it.secondary && it.cellId != null }
+            .associate { it.rat to groupKeyOf(it.rat, it.mcc, it.mnc, it.nodeId, it.key) }
         db.withTransaction {
             for (c in cells) {
                 val key = c.key
@@ -64,6 +67,7 @@ object Recorder {
                 val connected = isAnchor && mode == EndcMode.CONNECTED
                 val available = isAnchor && (mode == EndcMode.CONNECTED || mode == EndcMode.AVAILABLE)
                 val legAnchor = if (key in legKeys && mode == EndcMode.CONNECTED) anchorGroup else null
+                val caAnchor = if (c.secondary && c.cellId == null && key !in legKeys) primaryGroup[c.rat] else null
                 val old = dao.getCell(key)
                 val updated = if (old == null) {
                     CellEntity(
@@ -94,6 +98,7 @@ object Recorder {
                         endcConnectedSamples = if (connected) 1 else 0,
                         endcAvailableSamples = if (available) 1 else 0,
                         nrAnchorKey = legAnchor,
+                        caAnchorKey = caAnchor,
                     )
                 } else {
                     old.copy(
@@ -115,6 +120,7 @@ object Recorder {
                         endcConnectedSamples = old.endcConnectedSamples + if (connected) 1 else 0,
                         endcAvailableSamples = old.endcAvailableSamples + if (available) 1 else 0,
                         nrAnchorKey = legAnchor ?: old.nrAnchorKey,
+                        caAnchorKey = caAnchor ?: old.caAnchorKey,
                     )
                 }
                 dao.upsertCell(updated)

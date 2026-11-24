@@ -72,6 +72,7 @@ import de.funkstrecke.radio.EndcMode
 import de.funkstrecke.radio.EndcSnapshot
 import de.funkstrecke.radio.qualityLabel
 import de.funkstrecke.radio.signalLabel
+import de.funkstrecke.radio.taLabel
 import de.funkstrecke.service.Geofencer
 import de.funkstrecke.service.HomeStatus
 import de.funkstrecke.service.LogState
@@ -484,7 +485,14 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?, onClick: (() -> Un
                 cell.band?.downlinkMhz?.let { KeyValue("Downlink", String.format(Lang.locale, "%.1f MHz", it)) }
                 cell.quality?.let { KeyValue(qualityLabel(cell.rat), "$it dB") }
                 cell.sinr?.let { KeyValue("SINR", "$it dB") }
-                cell.timingAdvance?.let { ta -> KeyValue("TA", cell.distanceM?.let { "$ta ≈ $it m" } ?: ta.toString()) }
+                cell.timingAdvance?.let { ta -> KeyValue("TA", cell.distanceM?.let { "${taLabel(cell.rat, ta)} ≈ $it m" } ?: taLabel(cell.rat, ta)) }
+            }
+            if (cell.secondary) {
+                Text(
+                    tr("Sekundärzelle (Trägerbündelung): sendet zusammen mit der verbundenen Zelle", "Secondary cell (carrier aggregation): transmits together with the serving cell"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
             if (siteHint != null) {
                 Text(siteHint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

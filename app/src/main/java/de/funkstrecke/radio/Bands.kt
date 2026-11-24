@@ -81,9 +81,39 @@ object Bands {
 
 /** Netzbetreiber anhand MCC/MNC (Deutschland: MCC 262, China: MCC 460). */
 object Operators {
+    private const val PREFS = "operator_names"
+    private val learned = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    @Volatile
+    private var loaded = false
+
+    /** Gemerkte Netznamen laden (vom Netz gemeldet, für Länder ohne eigene Tabelle). */
+    fun init(context: android.content.Context) {
+        if (loaded) return
+        val p = context.applicationContext.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+        p.all.forEach { (k, v) -> if (v is String) learned[k] = v }
+        loaded = true
+    }
+
+    /** Netzname, den die Zelle selbst meldet, für MCC/MNC merken. */
+    fun learn(context: android.content.Context, mcc: String?, mnc: String?, name: String) {
+        if (mcc == null || mnc == null) return
+        init(context)
+        val key = "$mcc-${mnc.padStart(2, '0')}"
+        if (learned[key] == name) return
+        learned[key] = name
+        context.applicationContext.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+            .edit().putString(key, name).apply()
+    }
+
+    /** Name aus der Tabelle, sonst der vom Netz gemeldete. */
     fun name(mcc: String?, mnc: String?): String? {
         if (mnc == null) return null
         val m = mnc.padStart(2, '0')
+        return known(mcc, m) ?: learned["$mcc-$m"]
+    }
+
+    private fun known(mcc: String?, m: String): String? {
         return when (mcc) {
             "262" -> when (m) {
                 "01", "06" -> "Telekom"

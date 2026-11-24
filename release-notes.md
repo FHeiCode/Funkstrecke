@@ -1,4 +1,5 @@
-Netze in China
+Mehr aus dem Modem
 
-- Betreibernamen für China: China Mobile, China Unicom, China Telecom und China Broadnet (MCC 460) statt „Unbekannt“, jeweils mit eigener Farbe.
-- Chinesische Bänder werden erkannt: LTE B5, B34, B39, B40 und B41 sowie 5G n41, n79, n40 und n5, mit Frequenz.
+- 5G: Timing Advance der verbundenen Zelle (ab Android 14, wenn das Modem ihn meldet, meist bei 5G SA). Er hilft bei der Standortschätzung wie bei LTE.
+- Trägerbündelung: Sekundärzellen werden im Live-Tab markiert und ohne Cell-ID der Station der verbundenen Zelle zugeordnet.
+- Netznamen: Betreiber in anderen Ländern bekommen den Namen, den das Netz selbst meldet (ab Android 11).
