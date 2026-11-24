@@ -151,6 +151,7 @@ class ScanService : Service() {
         }
         if (started) return START_NOT_STICKY
         SettingsStore.init(this)
+        de.funkstrecke.radio.Operators.init(this)
         EndcMonitor.start(this)
         autoStarted = intent?.getBooleanExtra(EXTRA_AUTO, false) == true
         if (!LocationHelper.hasPermission(this)) {

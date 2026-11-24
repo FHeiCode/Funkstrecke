@@ -44,7 +44,11 @@ data class SignalModel(
     fun band(rat: String, band: String?): BandModel =
         (band?.let { bands["$rat/$it"] }) ?: bands["$rat/*"] ?: DEFAULT_BAND
 
-    fun ta(rat: String): TaModel = ta[rat] ?: if (rat == "2G") DEFAULT_TA_GSM else DEFAULT_TA_LTE
+    fun ta(rat: String): TaModel = ta[rat] ?: when (rat) {
+        "2G" -> DEFAULT_TA_GSM
+        "5G" -> DEFAULT_TA_NR
+        else -> DEFAULT_TA_LTE
+    }
 
     fun toJson(): String = JSONObject().apply {
         put("learnedAt", learnedAt)
@@ -73,6 +77,8 @@ data class SignalModel(
         val DEFAULT_BAND = BandModel(exponent = 3.0, p0 = -5.0, p0Sigma = 10.0, sigmaDb = 6.0)
         val DEFAULT_TA_LTE = TaModel(0.0, 80.0)
         val DEFAULT_TA_GSM = TaModel(0.0, 550.0)
+        /** 5G: Auflösung 1 µs ≈ 150 m */
+        val DEFAULT_TA_NR = TaModel(0.0, 150.0)
         val DEFAULT = SignalModel()
 
         fun fromJson(text: String): SignalModel? = runCatching {

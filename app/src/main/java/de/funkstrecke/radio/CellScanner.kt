@@ -52,9 +52,14 @@ data class CellRecord(
     val quality: Int?,
     /** RS-SNR (4G) bzw. SS-SINR (5G) in dB */
     val sinr: Int?,
+    /** 4G/2G: TA-Schritte; 5G: Mikrosekunden (Android 14+) */
     val timingAdvance: Int?,
     /** Messzeitpunkt laut Modem (SystemClock.elapsedRealtime in ms), falls gemeldet */
     val measuredAtMs: Long? = null,
+    /** Sekundärzelle der Trägerbündelung (Carrier Aggregation): sendet zusammen mit der verbundenen Zelle */
+    val secondary: Boolean = false,
+    /** Netzname, wie ihn das Netz selbst meldet (meist nur bei der verbundenen Zelle) */
+    val operatorAlpha: String? = null,
 ) {
     val operatorName: String? get() = Operators.name(mcc, mnc)
     val plmn: String? get() = if (mcc != null && mnc != null) "$mcc-$mnc" else null
@@ -72,21 +77,31 @@ data class CellRecord(
  */
 const val MAX_TA_LTE = 640
 const val MAX_TA_GSM = 63
+/** 5G: Timing Advance in µs; 340 µs ≈ 51 km */
+const val MAX_TA_NR_US = 340
 
 fun plausibleTa(rat: String, ta: Int?, registered: Boolean): Int? = when {
     ta == null || !registered || ta < 0 -> null
     rat == "4G" && ta <= MAX_TA_LTE -> ta
     rat == "2G" && ta <= MAX_TA_GSM -> ta
+    rat == "5G" && ta <= MAX_TA_NR_US -> ta
     else -> null
 }
 
-/** Entfernung aus dem Timing Advance: 4G 78,12 m pro Schritt, 2G 553,5 m pro Schritt (Mitte des Intervalls). */
+/**
+ * Entfernung aus dem Timing Advance: 4G 78,12 m pro Schritt, 2G 553,5 m pro Schritt, 5G 149,9 m pro µs
+ * (Laufzeit hin und zurück; jeweils Mitte des Intervalls).
+ */
 fun timingDistance(rat: String, ta: Int?): Double? = when {
     ta == null -> null
     rat == "4G" -> (ta + 0.5) * 78.12
     rat == "2G" -> (ta + 0.5) * 553.5
+    rat == "5G" -> (ta + 0.5) * 149.9
     else -> null
 }
+
+/** Anzeige des Timing Advance mit Einheit (5G in µs) */
+fun taLabel(rat: String, ta: Int): String = if (rat == "5G") "$ta µs" else ta.toString()
 
 fun signalLabel(rat: String) = when (rat) {
     "4G" -> "RSRP"
@@ -161,6 +176,8 @@ object CellScanner {
             emptyList()
         }
         val records = infos.mapNotNull { map(it) }
+        // Netznamen merken, damit Betreiber auch ohne eigene Tabelle (andere Länder) einen Namen haben.
+        records.forEach { r -> if (r.operatorAlpha != null) Operators.learn(context, r.mcc, r.mnc, r.operatorAlpha) }
         // Nachbarzellen melden oft kein MCC/MNC: von der verbundenen Zelle derselben SIM übernehmen.
         val serving = records.filter { it.registered && it.mcc != null }
         return records.map { r ->
@@ -199,7 +216,18 @@ object CellScanner {
                 else -> null
             }
         }
-        return record?.copy(measuredAtMs = timestampOf(info))
+        if (record == null) return null
+        // Sekundärzellen der Trägerbündelung (ab Android 9). NR-Zellen bei EN-DC (5G NSA) melden sich ebenfalls
+        // als sekundär; die werden über EndcMonitor einer LTE-Station zugeordnet.
+        val secondary = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P &&
+            info.cellConnectionStatus == CellInfo.CONNECTION_SECONDARY_SERVING
+        // CellInfo.getCellIdentity() gibt es erst ab Android 11.
+        val alpha = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            info.cellIdentity.operatorAlphaLong?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+        } else {
+            null
+        }
+        return record.copy(measuredAtMs = timestampOf(info), secondary = secondary, operatorAlpha = alpha)
     }
 
     @Suppress("DEPRECATION")
@@ -261,7 +289,12 @@ object CellScanner {
             dbm = rsrp,
             quality = ss?.ssRsrq?.orNull()?.let { if (it > 0) -it else it }?.takeIf { it in -43..20 },
             sinr = ss?.ssSinr?.orNull()?.takeIf { it in -23..40 },
-            timingAdvance = null,
+            // Timing Advance für 5G gibt es erst ab Android 14 und nur, wenn das Modem ihn meldet (meist 5G SA).
+            timingAdvance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                plausibleTa("5G", ss?.timingAdvanceMicros?.orNull(), info.isRegistered)
+            } else {
+                null
+            },
         )
     }
 

@@ -82,6 +82,12 @@ fun matchLiveCells(located: List<BaseStation>, live: List<CellRecord>, here: Pai
         if (choice != null) stationOf[r] = choice
     }
 
+    // Sekundärzellen (Trägerbündelung) ohne Treffer gehören zur Station der verbundenen Zelle derselben Technik.
+    for (r in live) {
+        if (!r.secondary || r in stationOf) continue
+        live.firstOrNull { it.registered && !it.secondary && it.rat == r.rat }?.let { p -> stationOf[p] }?.let { stationOf[r] = it }
+    }
+
     val result = HashMap<String, LiveMatch>()
     for ((s, records) in stationOf.entries.groupBy({ it.value }, { it.key })) {
         val serving = records.any { it.registered }

@@ -51,6 +51,8 @@ data class CellEntity(
     @ColumnInfo(defaultValue = "0") val endcAvailableSamples: Int = 0,
     /** NR-Zelle: Station der LTE-Ankerzelle, mit der sie zuletzt als NR-Zweig gemessen wurde */
     val nrAnchorKey: String? = null,
+    /** Zelle ohne Cell-ID, zuletzt als Sekundärzelle (Trägerbündelung) gemessen: Station der verbundenen Zelle */
+    val caAnchorKey: String? = null,
 )
 
 /** Eine einzelne Messung mit GPS-Position, Grundlage der Standortschätzung. */
@@ -224,7 +226,7 @@ interface CellDao {
         CellEntity::class, MeasurementEntity::class, EstimateEntity::class, OcidEntity::class,
         OsmMastEntity::class, OsmTileEntity::class, SuspectEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -252,6 +254,13 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         /** 8 → 9: automatische Markierung möglicher Artefakte; aufgehobene Markierungen bleiben stehen. */
+        /** 9 → 10: Zuordnung von Sekundärzellen (Trägerbündelung) zur Station der verbundenen Zelle. */
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `cells` ADD COLUMN `caAnchorKey` TEXT")
+            }
+        }
+
         val MIGRATION_8_9 = object : Migration(8, 9) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE `suspects` ADD COLUMN `auto` INTEGER NOT NULL DEFAULT 0")
@@ -324,7 +333,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "funkstrecke.db",
                 )
                     // Messdaten bleiben bei Updates erhalten: jede Schemaänderung bekommt eine Migration.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     // Nur Version 1 (altes Erfassungsformular) wird verworfen.
                     .fallbackToDestructiveMigrationFrom(dropAllTables = true, 1)
                     .build()

@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SettingsStore.init(this)
+        de.funkstrecke.radio.Operators.init(this)
         Lang.init(this)
         HomeStore.init(this)
         PauseStore.init(this)

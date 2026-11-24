@@ -30,11 +30,18 @@ data class CellCentroid(
 )
 
 enum class LinkConfidence {
+    /** Als Sekundärzelle zusammen mit einer Zelle der Station gemessen (Trägerbündelung) */
+    CARRIER_AGGREGATION,
     LIKELY,
     POSSIBLE,
     ;
 
-    val label: String get() = if (this == LIKELY) tr("wahrscheinlich", "likely") else tr("möglich", "possible")
+    val label: String
+        get() = when (this) {
+            CARRIER_AGGREGATION -> tr("Trägerbündelung", "carrier aggregation")
+            LIKELY -> tr("wahrscheinlich", "likely")
+            POSSIBLE -> tr("möglich", "possible")
+        }
 }
 
 /** Zelle ohne Cell-ID, die über ihre PCI-Gruppe einer bekannten Station zugeordnet wurde. */
@@ -308,11 +315,25 @@ private fun buildStationsCore(
         return points.map { it.latitude }.average() to points.map { it.longitude }.average()
     }
     val anchorPosition = anchors.associate { it.key to positionOf(it) }
+    val anchorByKey = anchors.associateBy { it.key }
 
     // 2) Lose Zellen über die PCI-Gruppe einem Anker zuordnen, geprüft über die Messorte.
     val linkedTo = mutableMapOf<String, MutableList<LinkedCell>>()
     val unlinked = mutableListOf<CellEntity>()
     for (c in loose) {
+        // Sekundärzelle der Trägerbündelung: gehört zur Station der verbundenen Zelle.
+        val ca = c.caAnchorKey?.let { anchorByKey[it] }
+        if (ca != null && ca.rat == c.rat) {
+            val own = centroidOf[c.id]
+            val ap = anchorPosition[ca.key]
+            linkedTo.getOrPut(ca.key) { mutableListOf() } += LinkedCell(
+                cell = c,
+                confidence = LinkConfidence.CARRIER_AGGREGATION,
+                distanceM = if (own != null && ap != null) distanceM(own.latitude, own.longitude, ap.first, ap.second) else null,
+                sameSectorAs = ca.cells.firstOrNull { it.pci == c.pci && it.cellId != null },
+            )
+            continue
+        }
         val pci = c.pci
         if (pci == null || !supportsPciGroups(c.rat)) {
             unlinked += c
