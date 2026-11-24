@@ -487,6 +487,13 @@ private fun LiveCellCard(cell: CellRecord, siteHint: String?, onClick: (() -> Un
                 cell.sinr?.let { KeyValue("SINR", "$it dB") }
                 cell.timingAdvance?.let { ta -> KeyValue("TA", cell.distanceM?.let { "${taLabel(cell.rat, ta)} ≈ $it m" } ?: taLabel(cell.rat, ta)) }
             }
+            if (!cell.dataSim) {
+                Text(
+                    tr("Zweite SIM (ohne Daten, im Leerlauf): ohne Timing Advance", "Second SIM (no data, idle): no timing advance"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (cell.secondary) {
                 Text(
                     tr("Sekundärzelle (Trägerbündelung): sendet zusammen mit der verbundenen Zelle", "Secondary cell (carrier aggregation): transmits together with the serving cell"),

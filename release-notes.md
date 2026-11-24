@@ -1,5 +1,5 @@
-Mehr aus dem Modem
+Dual-SIM im gleichen Netz
 
-- 5G: Timing Advance der verbundenen Zelle (ab Android 14, wenn das Modem ihn meldet, meist bei 5G SA). Er hilft bei der Standortschätzung wie bei LTE.
-- Trägerbündelung: Sekundärzellen werden im Live-Tab markiert und ohne Cell-ID der Station der verbundenen Zelle zugeordnet.
-- Netznamen: Betreiber in anderen Ländern bekommen den Namen, den das Netz selbst meldet (ab Android 11).
+- Timing Advance, Trägerbündelung und EN-DC-Anker kommen nur noch von der Daten-SIM. Die zweite SIM ruht im Leerlauf und meldet dort alte oder keine Werte.
+- Hören beide SIMs dieselbe Zelle, zählt sie nur einmal: verbunden vor Nachbar, Daten-SIM vor der anderen. Bisher konnte dieselbe Zelle doppelt gezählt werden.
+- Zellen, die nur die zweite SIM hört, werden weiter aufgezeichnet (ohne Timing Advance) und im Live-Tab als „Zweite SIM“ markiert.

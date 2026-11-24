@@ -60,6 +60,8 @@ data class CellRecord(
     val secondary: Boolean = false,
     /** Netzname, wie ihn das Netz selbst meldet (meist nur bei der verbundenen Zelle) */
     val operatorAlpha: String? = null,
+    /** Von der Daten-SIM gemessen (bei nur einer SIM immer true). Nur sie ist aktiv verbunden. */
+    val dataSim: Boolean = true,
 ) {
     val operatorName: String? get() = Operators.name(mcc, mnc)
     val plmn: String? get() = if (mcc != null && mnc != null) "$mcc-$mnc" else null
@@ -141,26 +143,41 @@ object CellScanner {
      * Scannt alle aktiven SIMs (Dual-SIM, falls "Telefonstatus" erlaubt ist).
      * Mit [forceRefresh] misst das Modem neu (genauer, braucht mehr Strom),
      * sonst liefert Android den letzten bekannten Stand.
+     *
+     * Dual-SIM: Nur die Daten-SIM ist aktiv verbunden, die andere ruht im Leerlauf. Deren Pegel stimmen,
+     * Timing Advance und Sekundärzellen aber nicht (alt oder fehlend); beides wird bei ihr verworfen.
+     * Hören beide SIMs dieselbe Zelle (gleiches Netz), zählt ein Eintrag: verbunden vor Nachbar,
+     * dann Daten-SIM vor der anderen. Zellen, die nur die andere SIM hört (anderes Netz oder andere Zelle),
+     * bleiben erhalten.
      */
     suspend fun scan(context: Context, forceRefresh: Boolean = true): List<CellRecord> {
         val base = context.getSystemService(TelephonyManager::class.java) ?: return emptyList()
-        val all = subscriptionManagers(context, base).flatMap { scanOne(context, it, forceRefresh) }
+        val subs = subscriptionManagers(context, base)
+        val dataSub = SubscriptionManager.getDefaultDataSubscriptionId()
+        val all = subs.flatMap { (subId, tm) ->
+            val records = scanOne(context, tm, forceRefresh)
+            // Ohne gültige Daten-SIM-Kennung (oder bei nur einer SIM) gelten alle als Daten-SIM.
+            val isData = subId == null || dataSub == SubscriptionManager.INVALID_SUBSCRIPTION_ID || subId == dataSub
+            if (isData) records else records.map { it.copy(dataSim = false, timingAdvance = null, secondary = false) }
+        }
         return all
-            .distinctBy { Triple(it.key, it.registered, it.arfcn) }
             .sortedWith(
                 compareByDescending<CellRecord> { it.registered }
+                    .thenByDescending { it.dataSim }
                     .thenByDescending { it.dbm ?: Int.MIN_VALUE },
             )
+            .distinctBy { it.key }
     }
 
+    /** Telephony je aktiver SIM; die Kennung ist null, wenn nur eine SIM (oder keine Berechtigung) da ist. */
     @SuppressLint("MissingPermission")
-    private fun subscriptionManagers(context: Context, base: TelephonyManager): List<TelephonyManager> {
+    private fun subscriptionManagers(context: Context, base: TelephonyManager): List<Pair<Int?, TelephonyManager>> {
         val canReadState = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
             PackageManager.PERMISSION_GRANTED
-        if (!canReadState) return listOf(base)
-        val sm = context.getSystemService(SubscriptionManager::class.java) ?: return listOf(base)
+        if (!canReadState) return listOf(null to base)
+        val sm = context.getSystemService(SubscriptionManager::class.java) ?: return listOf(null to base)
         val ids = runCatching { sm.activeSubscriptionInfoList?.map { it.subscriptionId } }.getOrNull().orEmpty()
-        return if (ids.size <= 1) listOf(base) else ids.map { base.createForSubscriptionId(it) }
+        return if (ids.size <= 1) listOf(null to base) else ids.map { it to base.createForSubscriptionId(it) }
     }
 
     @SuppressLint("MissingPermission")

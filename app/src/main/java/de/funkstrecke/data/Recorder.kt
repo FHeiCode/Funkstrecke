@@ -57,7 +57,7 @@ object Recorder {
         val anchorGroup = anchor?.let { groupKeyOf(it.rat, it.mcc, it.mnc, it.nodeId, it.key) }
         val legKeys = endc?.nrLegs?.map { it.key }?.toSet().orEmpty()
         // Station der verbundenen Zelle je Technik, für Sekundärzellen ohne Cell-ID (Trägerbündelung).
-        val primaryGroup = cells.filter { it.registered && !it.secondary && it.cellId != null }
+        val primaryGroup = cells.filter { it.registered && it.dataSim && !it.secondary && it.cellId != null }
             .associate { it.rat to groupKeyOf(it.rat, it.mcc, it.mnc, it.nodeId, it.key) }
         db.withTransaction {
             for (c in cells) {
