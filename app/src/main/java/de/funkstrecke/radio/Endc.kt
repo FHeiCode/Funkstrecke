@@ -186,11 +186,12 @@ object EndcMonitor {
         serviceStateReadable: Boolean,
     ): EndcSnapshot {
         val serving = cells.filter { it.registered }
-        val anchor = serving.firstOrNull { it.rat == "4G" }
+        // Anker nur von der Daten-SIM: nur sie hat EN-DC (Dual-SIM im gleichen Netz).
+        val anchor = serving.firstOrNull { it.rat == "4G" && it.dataSim }
         val nrServing = serving.firstOrNull { it.rat == "5G" }
         // NR-Zellen zählen nur als NR-Zweig, solange eine LTE-Verbindung besteht und das Netz passt.
         val legs = if (anchor != null) {
-            cells.filter { it.rat == "5G" && (it.mcc == null || anchor.mcc == null || it.mcc == anchor.mcc && it.mnc == anchor.mnc) }
+            cells.filter { it.rat == "5G" && it.dataSim && (it.mcc == null || anchor.mcc == null || it.mcc == anchor.mcc && it.mnc == anchor.mnc) }
         } else {
             emptyList()
         }
