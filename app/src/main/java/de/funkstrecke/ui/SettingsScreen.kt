@@ -201,6 +201,10 @@ fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> U
                 BehaviorChoices(dataBehavior, { it.dataDescription }, SettingsStore::setDataBehavior)
             }
 
+            Section(tr("SIM-Karten", "SIM cards")) {
+                SimSelection()
+            }
+
             Section(tr("Bewertung", "Rating")) {
                 val strict by SettingsStore.strictOsm.collectAsStateWithLifecycle()
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -331,6 +335,73 @@ fun SettingsScreen(vm: ScannerViewModel, onBack: () -> Unit, onHomeBase: () -> U
         }
     }
 }
+
+/** Auswahl, welche SIMs gescannt werden (nur bei mehreren aktiven SIMs). */
+@Composable
+private fun SimSelection() {
+    val context = LocalContext.current
+    val dataOnly by SettingsStore.dataSimOnly.collectAsStateWithLifecycle()
+    val excluded by SettingsStore.excludedSims.collectAsStateWithLifecycle()
+    // Beim Öffnen neu lesen, damit ein Wechsel der Daten-SIM sichtbar wird.
+    val sims = androidx.compose.runtime.remember { de.funkstrecke.radio.CellScanner.simCards(context) }
+    when {
+        sims.isEmpty() -> {
+            Hint(tr("Für die SIM-Auswahl braucht die App die Erlaubnis „Telefonstatus“.", "Selecting SIMs needs the \"phone state\" permission."))
+            return
+        }
+        sims.size == 1 -> {
+            Hint(tr("Nur eine SIM aktiv: ", "Only one SIM active: ") + simLabel(sims[0]))
+            return
+        }
+    }
+    Hint(
+        tr(
+            "Nur die Daten-SIM ist aktiv verbunden; nur sie liefert Timing Advance, Trägerbündelung und EN-DC. " +
+                "Die andere SIM ruht und liefert nur Pegel.",
+            "Only the data SIM is actively connected; only it provides timing advance, carrier aggregation and EN-DC. " +
+                "The other SIM is idle and provides signal levels only.",
+        ),
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(tr("Nur die Daten-SIM", "Data SIM only"), style = MaterialTheme.typography.titleSmall)
+            Text(
+                tr("Folgt der Daten-SIM in den Android-Einstellungen.", "Follows the data SIM in the Android settings."),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Switch(checked = dataOnly, onCheckedChange = { SettingsStore.setDataSimOnly(it) })
+    }
+    val enabledCount = sims.count { it.subscriptionId !in excluded }
+    sims.forEach { sim ->
+        val on = sim.subscriptionId !in excluded
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            androidx.compose.material3.Checkbox(
+                checked = if (dataOnly) sim.data else on,
+                // Mindestens eine SIM muss gewählt bleiben.
+                enabled = !dataOnly && (!on || enabledCount > 1),
+                onCheckedChange = { SettingsStore.setSimEnabled(sim.subscriptionId, it) },
+            )
+            Column(Modifier.weight(1f)) {
+                Text(simLabel(sim), style = MaterialTheme.typography.titleSmall)
+                Text(
+                    listOfNotNull(
+                        sim.carrier,
+                        if (sim.embedded) "eSIM" else tr("physische SIM", "physical SIM"),
+                        if (sim.data) tr("Daten-SIM", "data SIM") else null,
+                    ).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (sim.data) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private fun simLabel(sim: de.funkstrecke.radio.CellScanner.SimCard): String =
+    if (sim.slot >= 0) "SIM ${sim.slot + 1}: ${sim.name}" else sim.name
 
 @Composable
 private fun FieldTitle(text: String) {

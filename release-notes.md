@@ -1,5 +1,6 @@
-Dual-SIM im gleichen Netz
+SIM-Auswahl
 
-- Timing Advance, Trägerbündelung und EN-DC-Anker kommen nur noch von der Daten-SIM. Die zweite SIM ruht im Leerlauf und meldet dort alte oder keine Werte.
-- Hören beide SIMs dieselbe Zelle, zählt sie nur einmal: verbunden vor Nachbar, Daten-SIM vor der anderen. Bisher konnte dieselbe Zelle doppelt gezählt werden.
-- Zellen, die nur die zweite SIM hört, werden weiter aufgezeichnet (ohne Timing Advance) und im Live-Tab als „Zweite SIM“ markiert.
+- Neue Einstellung „SIM-Karten“: Bei mehreren aktiven SIMs wählst du, welche gescannt werden.
+- „Nur die Daten-SIM“ folgt automatisch der Daten-SIM in den Android-Einstellungen.
+- Jede SIM zeigt Steckplatz, Name, Betreiber, eSIM oder physische SIM und ob sie die Daten-SIM ist. Mindestens eine SIM bleibt gewählt.
+- Gilt für Aufzeichnung und Live-Tab.

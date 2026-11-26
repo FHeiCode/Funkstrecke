@@ -104,6 +104,25 @@ object SettingsStore {
         prefs?.edit()?.putBoolean("autoArtefacts", value)?.apply()
     }
 
+    private val dataSimOnlyState = MutableStateFlow(false)
+    /** Dual-SIM: nur die aktuelle Daten-SIM scannen (folgt der Android-Einstellung) */
+    val dataSimOnly: StateFlow<Boolean> = dataSimOnlyState.asStateFlow()
+
+    fun setDataSimOnly(value: Boolean) {
+        dataSimOnlyState.value = value
+        prefs?.edit()?.putBoolean("dataSimOnly", value)?.apply()
+    }
+
+    private val excludedSimsState = MutableStateFlow<Set<Int>>(emptySet())
+    /** Dual-SIM: abgewählte SIMs (Subscription-IDs). Neue SIMs sind automatisch dabei. */
+    val excludedSims: StateFlow<Set<Int>> = excludedSimsState.asStateFlow()
+
+    fun setSimEnabled(subscriptionId: Int, enabled: Boolean) {
+        val next = if (enabled) excludedSimsState.value - subscriptionId else excludedSimsState.value + subscriptionId
+        excludedSimsState.value = next
+        prefs?.edit()?.putStringSet("excludedSims", next.map { it.toString() }.toSet())?.apply()
+    }
+
     private val dataState = MutableStateFlow(CallBehavior.PASSIVE)
     val dataBehavior: StateFlow<CallBehavior> = dataState.asStateFlow()
 
@@ -134,6 +153,8 @@ object SettingsStore {
         suspectMinState.value = p.getInt("suspectMin", 1)
         autoArtefactsState.value = p.getBoolean("autoArtefacts", true)
         strictOsmState.value = p.getBoolean("strictOsm", true)
+        dataSimOnlyState.value = p.getBoolean("dataSimOnly", false)
+        excludedSimsState.value = p.getStringSet("excludedSims", emptySet()).orEmpty().mapNotNull { it.toIntOrNull() }.toSet()
     }
 
     fun update(transform: (ScanSettings) -> ScanSettings) {
