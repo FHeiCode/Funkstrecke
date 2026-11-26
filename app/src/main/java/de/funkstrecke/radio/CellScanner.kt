@@ -17,6 +17,7 @@ import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import de.funkstrecke.util.tr
+import de.funkstrecke.util.SettingsStore
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.resume
@@ -169,7 +170,10 @@ object CellScanner {
             .distinctBy { it.key }
     }
 
-    /** Telephony je aktiver SIM; die Kennung ist null, wenn nur eine SIM (oder keine Berechtigung) da ist. */
+    /**
+     * Telephony je aktiver und in den Einstellungen gewählter SIM; die Kennung ist null, wenn nur eine SIM
+     * (oder keine Berechtigung) da ist. Ist keine gewählte SIM aktiv, werden alle gescannt.
+     */
     @SuppressLint("MissingPermission")
     private fun subscriptionManagers(context: Context, base: TelephonyManager): List<Pair<Int?, TelephonyManager>> {
         val canReadState = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
@@ -177,7 +181,38 @@ object CellScanner {
         if (!canReadState) return listOf(null to base)
         val sm = context.getSystemService(SubscriptionManager::class.java) ?: return listOf(null to base)
         val ids = runCatching { sm.activeSubscriptionInfoList?.map { it.subscriptionId } }.getOrNull().orEmpty()
-        return if (ids.size <= 1) listOf(null to base) else ids.map { it to base.createForSubscriptionId(it) }
+        if (ids.size <= 1) return listOf(null to base)
+        val dataSub = SubscriptionManager.getDefaultDataSubscriptionId()
+        val chosen = if (SettingsStore.dataSimOnly.value && dataSub in ids) {
+            listOf(dataSub)
+        } else {
+            ids.filter { it !in SettingsStore.excludedSims.value }.ifEmpty { ids }
+        }
+        return chosen.map { it to base.createForSubscriptionId(it) }
+    }
+
+    /** Eine aktive SIM, für die Auswahl in den Einstellungen. */
+    data class SimCard(val subscriptionId: Int, val slot: Int, val name: String, val carrier: String?, val embedded: Boolean, val data: Boolean)
+
+    /** Aktive SIMs; leer ohne Erlaubnis „Telefonstatus“. */
+    @SuppressLint("MissingPermission")
+    fun simCards(context: Context): List<SimCard> {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) != PackageManager.PERMISSION_GRANTED) {
+            return emptyList()
+        }
+        val sm = context.getSystemService(SubscriptionManager::class.java) ?: return emptyList()
+        val dataSub = SubscriptionManager.getDefaultDataSubscriptionId()
+        val list = runCatching { sm.activeSubscriptionInfoList }.getOrNull().orEmpty()
+        return list.map { info ->
+            SimCard(
+                subscriptionId = info.subscriptionId,
+                slot = info.simSlotIndex,
+                name = info.displayName?.toString()?.takeIf { it.isNotBlank() } ?: "SIM ${info.simSlotIndex + 1}",
+                carrier = info.carrierName?.toString()?.takeIf { it.isNotBlank() },
+                embedded = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && info.isEmbedded,
+                data = info.subscriptionId == dataSub,
+            )
+        }.sortedBy { it.slot }
     }
 
     @SuppressLint("MissingPermission")
